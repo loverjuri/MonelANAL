@@ -3,6 +3,10 @@ from db.models import engine
 from sqlalchemy import text
 
 MIGRATIONS = [
+    "ALTER TABLE finance ADD COLUMN exclude_from_budget INTEGER DEFAULT 0",
+    "ALTER TABLE debts ADD COLUMN payment_cycle TEXT DEFAULT 'monthly'",
+    "ALTER TABLE debts ADD COLUMN next_payment_date TEXT",
+    "ALTER TABLE debts ADD COLUMN debt_kind TEXT DEFAULT 'credit'",
     "ALTER TABLE budget_plan ADD COLUMN period_type TEXT DEFAULT 'month'",
     "ALTER TABLE goals ADD COLUMN goal_type TEXT DEFAULT 'other'",
     "ALTER TABLE goals ADD COLUMN auto_fund_percent REAL DEFAULT 0",

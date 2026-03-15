@@ -15,6 +15,7 @@ monelanal/data/*.json
 .env
 .env.local
 data/
+*.xlsx
 
 # IDE
 .idea/

@@ -113,7 +113,7 @@ def get_forecast_end_of_month(session) -> dict:
     start, end = get_month_range(month_year)
     rows = get_finance_for_period(session, start, today)
     income = sum(r.amount for r in rows if r.type in ("IncomeSalary", "IncomeSecond"))
-    expense = sum(r.amount for r in rows if r.type == "Expense")
+    expense = sum(r.amount for r in rows if r.type == "Expense" and not getattr(r, "exclude_from_budget", False))
     day_now = int(today[8:10])
     day_end = int(end[8:10])
     days_left = max(day_end - day_now, 0)
@@ -140,6 +140,7 @@ def get_5030_20_hint(session) -> str:
         return "Нет данных за прошлый месяц."
     rows = get_finance_for_period(session, start, end)
     income = sum(r.amount for r in rows if r.type in ("IncomeSalary", "IncomeSecond"))
+    # 50/30/20 uses income, expenses excluded via get_expenses implicitly in suggest_plan
     if income <= 0:
         return "Нет доходов за прошлый месяц."
     needs = int(income * 0.5)

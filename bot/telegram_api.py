@@ -70,3 +70,26 @@ def send_photo(chat_id: int, photo_path: str, caption: str = "") -> dict | None:
         return r.json()
     except Exception:
         return None
+
+
+def download_file(file_id: str, save_path: str) -> bool:
+    """Download file by file_id from Telegram. Returns True on success."""
+    if not BOT_TOKEN:
+        return False
+    try:
+        r = requests.get(f"{BASE}{BOT_TOKEN}/getFile", params={"file_id": file_id}, timeout=10)
+        data = r.json()
+        if not data.get("ok"):
+            return False
+        path = data.get("result", {}).get("file_path")
+        if not path:
+            return False
+        url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{path}"
+        r2 = requests.get(url, timeout=30)
+        if r2.status_code != 200:
+            return False
+        with open(save_path, "wb") as f:
+            f.write(r2.content)
+        return True
+    except Exception:
+        return False

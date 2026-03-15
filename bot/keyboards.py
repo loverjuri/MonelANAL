@@ -180,6 +180,42 @@ def build_debt_direction_keyboard() -> dict:
     ])
 
 
+def build_debt_kind_keyboard() -> dict:
+    return _inline_keyboard([
+        [_btn("Кредит", "debt_kind_credit"), _btn("Рассрочка", "debt_kind_installment")],
+        [_btn("Кредитная карта", "debt_kind_card"), _btn("Овердрафт", "debt_kind_overdraft")],
+        [_btn("Отмена", "cmd_cancel")],
+    ])
+
+
+def build_debt_payment_mode_keyboard() -> dict:
+    return _inline_keyboard([
+        [_btn("Рассчитать платёж", "debt_pmode_calc"), _btn("Ввести сумму из банка", "debt_pmode_enter")],
+        [_btn("Отмена", "cmd_cancel")],
+    ])
+
+
+def build_debt_payment_type_keyboard() -> dict:
+    return _inline_keyboard([
+        [_btn("Аннуитетный", "debt_ptype_annuity"), _btn("Дифференцированный", "debt_ptype_fixed")],
+        [_btn("Отмена", "cmd_cancel")],
+    ])
+
+
+def build_debt_cycle_keyboard() -> dict:
+    return _inline_keyboard([
+        [_btn("Ежемесячно", "debt_cycle_monthly"), _btn("Раз в 2 недели", "debt_cycle_biweekly")],
+        [_btn("Отмена", "cmd_cancel")],
+    ])
+
+
+def build_debt_confirm_payment_keyboard(amount: float) -> dict:
+    return _inline_keyboard([
+        [_btn(f"Подтвердить ({int(amount)} руб.)", "debt_confirm_yes"), _btn("Ввести свою сумму", "debt_confirm_custom")],
+        [_btn("Отмена", "cmd_cancel")],
+    ])
+
+
 def build_debt_detail_keyboard(debt_id: str) -> dict:
     return _inline_keyboard([
         [_btn("Погасить частично", f"debt_pay_{debt_id}")],
@@ -254,6 +290,7 @@ def build_settings_keyboard() -> dict:
         [_btn("Тихие часы", "settings_quiet_hours")],
         [_btn("Уведомления", "settings_notifications")],
         [_btn("Порог крупного расхода", "settings_threshold")],
+        [_btn("Импорт Excel", "import_excel")],
         [_btn("Экспорт данных", "cmd_export")],
         [_btn("Удалить все данные", "settings_delete_all")],
         [_btn("Назад", "cmd_help")],
@@ -272,3 +309,36 @@ def build_confirm_keyboard() -> dict:
     return _inline_keyboard([
         [_btn("Да, подтверждаю", "confirm_yes"), _btn("Отмена", "confirm_no")],
     ])
+
+
+def build_import_exclude_budget_keyboard() -> dict:
+    return _inline_keyboard([
+        [_btn("Да, исключить", "import_exclude_yes"), _btn("Нет", "import_exclude_no")],
+        [_btn("Отмена", "cmd_cancel")],
+    ])
+
+
+def build_import_rows_keyboard(rows: list, start_idx: int, pending: set) -> dict:
+    """Rows: full list, start_idx: page offset, pending: set of indices not yet added/skipped."""
+    btns = []
+    pending_list = sorted(pending)
+    if not pending_list:
+        return _inline_keyboard([[_btn("Готово", "import_done")]])
+    page = pending_list[start_idx : start_idx + 5]
+    for idx in page:
+        r = rows[idx]
+        amt = int(r.get("amount", 0))
+        lbl = f"{r.get('date','')} {amt}"
+        btns.append([
+            _btn(f"+ {lbl}", f"import_add_{idx}"),
+            _btn(f"- {lbl}", f"import_skip_{idx}"),
+        ])
+    nav = []
+    if start_idx > 0:
+        nav.append(_btn("← Назад", f"import_page_{start_idx - 5}"))
+    if start_idx + 5 < len(pending_list):
+        nav.append(_btn("Вперёд →", f"import_page_{start_idx + 5}"))
+    if nav:
+        btns.append(nav)
+    btns.append([_btn("Готово", "import_done")])
+    return _inline_keyboard(btns)

@@ -42,6 +42,8 @@ def generate_period_report(session, period_type: str, ref_date: str = None) -> s
     income = expense = 0
     by_cat = {}
     for r in rows:
+        if getattr(r, "exclude_from_budget", False) and r.type == "Expense":
+            continue
         amt = r.amount or 0
         if r.type in ("IncomeSalary", "IncomeSecond"):
             income += amt
@@ -98,14 +100,14 @@ def compare_with_previous(session, period_type: str) -> str:
 
 def get_top_expenses(session, start: str, end: str, limit: int = 5) -> list:
     rows = get_finance_for_period(session, start, end)
-    expenses = [r for r in rows if r.type == "Expense"]
+    expenses = [r for r in rows if r.type == "Expense" and not getattr(r, "exclude_from_budget", False)]
     expenses.sort(key=lambda r: r.amount or 0, reverse=True)
     return expenses[:limit]
 
 
 def get_daily_average(session, start: str, end: str) -> float:
     rows = get_finance_for_period(session, start, end)
-    total = sum(r.amount for r in rows if r.type == "Expense")
+    total = sum(r.amount for r in rows if r.type == "Expense" and not getattr(r, "exclude_from_budget", False))
     try:
         s = datetime.strptime(start, "%Y-%m-%d")
         e = datetime.strptime(end, "%Y-%m-%d")

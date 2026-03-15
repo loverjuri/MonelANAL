@@ -20,6 +20,7 @@ from db.repositories import (
     get_finance_by_id,
     update_finance_entry,
     delete_finance_entry,
+    has_finance_duplicate,
     get_finance_for_period,
     log_info,
     log_error,
@@ -53,6 +54,7 @@ from db.repositories import (
     set_config_param,
 )
 from services.state import get_state, set_state, clear_state
+from db.repositories import get_state as get_state_db
 from services.calculations import (
     get_today_msk as calc_today,
     get_yesterday_msk as calc_yesterday,
@@ -62,7 +64,7 @@ from services.calculations import (
     get_accrued_second_for_period,
     calc_hour_rate_snapshot_for_date,
 )
-from bot.telegram_api import send_message, answer_callback_query, send_document, send_photo
+from bot.telegram_api import send_message, answer_callback_query, send_document, send_photo, download_file
 from services.budget import (
     get_budget_status, get_month_range, check_category_overspend,
     suggest_plan_from_history, get_forecast_end_of_month, get_5030_20_hint,
@@ -88,6 +90,11 @@ from bot.keyboards import (
     build_debt_direction_keyboard,
     build_debt_detail_keyboard,
     build_debt_select_keyboard,
+    build_debt_kind_keyboard,
+    build_debt_payment_mode_keyboard,
+    build_debt_payment_type_keyboard,
+    build_debt_cycle_keyboard,
+    build_debt_confirm_payment_keyboard,
     build_analytics_keyboard,
     build_period_keyboard,
     build_history_keyboard,
@@ -177,11 +184,17 @@ def is_exit_command(text: str) -> bool:
 
 
 # ─── handle_message ───────────────────────────────────────────
-def handle_message(chat_id: int, text: str, message_id: int | None = None):
+def handle_message(chat_id: int, text: str, message_id: int | None = None, message: dict | None = None):
     session = get_session()
     try:
         state = get_state(chat_id)
         trimmed = (text or "").strip()
+
+        # Document upload for Excel import
+        if message and message.get("document") and state and state.get("scenario") == "import_excel_wait_file":
+            _handle_import_excel_document(chat_id, session, state, message)
+            return
+
         if trimmed:
             log_info(session, f"handleMessage: chatId={chat_id} text={trimmed[:50]}")
 
@@ -255,6 +268,9 @@ def handle_message(chat_id: int, text: str, message_id: int | None = None):
             return
         if scenario == "custom_date_expense":
             _fsm_custom_date(chat_id, session, state, trimmed)
+            return
+        if scenario == "import_excel_confirm":
+            _fsm_import_excel_confirm(chat_id, session, state, trimmed)
             return
 
         quick_add = _parse_quick_expense(trimmed)
@@ -536,8 +552,9 @@ def _fsm_subs_add(chat_id, session, state, trimmed):
 
 def _fsm_debts_add(chat_id, session, state, trimmed):
     step = state.get("step", "")
+    p = state.get("payload", {})
     if step == "counterparty":
-        set_state(chat_id, "debts_add", "amount", {**state["payload"], "counterparty": trimmed})
+        set_state(chat_id, "debts_add", "amount", {**p, "counterparty": trimmed})
         send_message(chat_id, "Сумма долга (руб):", build_cancel_keyboard())
         return
     if step == "amount":
@@ -547,7 +564,7 @@ def _fsm_debts_add(chat_id, session, state, trimmed):
             send_message(chat_id, "Введите число:", build_cancel_keyboard())
             return
         if amt > 0:
-            set_state(chat_id, "debts_add", "interest", {**state["payload"], "amount": amt})
+            set_state(chat_id, "debts_add", "interest", {**p, "amount": amt})
             send_message(chat_id, "Процентная ставка (0 если без процентов):", build_cancel_keyboard())
         return
     if step == "interest":
@@ -555,15 +572,58 @@ def _fsm_debts_add(chat_id, session, state, trimmed):
             rate = float(trimmed.replace(",", "."))
         except ValueError:
             rate = 0
-        set_state(chat_id, "debts_add", "due_date", {**state["payload"], "interest": rate})
-        send_message(chat_id, "Дата возврата (YYYY-MM-DD или '-'):", build_cancel_keyboard())
+        set_state(chat_id, "debts_add", "debt_kind", {**p, "interest": rate})
+        send_message(chat_id, "Тип долга:", build_debt_kind_keyboard())
+        return
+    if step == "months":
+        try:
+            months = int(trimmed.replace(" ", ""))
+        except ValueError:
+            send_message(chat_id, "Введите число месяцев:", build_cancel_keyboard())
+            return
+        if months > 0:
+            set_state(chat_id, "debts_add", "payment_type", {**p, "months": months})
+            send_message(chat_id, "Тип графика платежа:", build_debt_payment_type_keyboard())
+        return
+    if step == "monthly_payment":
+        try:
+            pmt = float(trimmed.replace(" ", "").replace(",", "."))
+        except ValueError:
+            send_message(chat_id, "Введите сумму платежа (руб):", build_cancel_keyboard())
+            return
+        if pmt > 0:
+            set_state(chat_id, "debts_add", "cycle", {**p, "monthly_payment": pmt})
+            send_message(chat_id, "Интервал платежей:", build_debt_cycle_keyboard())
+        return
+    if step == "next_payment_date":
+        dt = trimmed[:10] if len(trimmed) >= 10 else ""
+        if dt and dt[4] == "-" and dt[7] == "-":
+            set_state(chat_id, "debts_add", "due_date", {**p, "next_payment_date": dt})
+            send_message(chat_id, "Дата окончания (YYYY-MM-DD или '-'):", build_cancel_keyboard())
+        else:
+            send_message(chat_id, "Неверный формат. Используйте YYYY-MM-DD:", build_cancel_keyboard())
         return
     if step == "due_date":
         due = "" if trimmed in ("-", "нет", "") else trimmed[:10]
-        p = state["payload"]
-        add_debt(session, p.get("direction", "owe"), p["counterparty"], p["amount"], p.get("interest", 0), "fixed", 0, due)
-        clear_state(chat_id)
-        send_message(chat_id, "Долг добавлен.", build_main_menu_keyboard())
+        _save_debt(chat_id, session, {**p, "due_date": due})
+
+
+def _save_debt(chat_id, session, p: dict):
+    add_debt(
+        session,
+        p.get("direction", "owe"),
+        p["counterparty"],
+        p["amount"],
+        p.get("interest", 0),
+        p.get("payment_type", "fixed"),
+        p.get("monthly_payment", 0),
+        p.get("payment_cycle", "monthly"),
+        p.get("next_payment_date", ""),
+        p.get("debt_kind", "credit"),
+        p.get("due_date", ""),
+    )
+    clear_state(chat_id)
+    send_message(chat_id, "Долг добавлен.", build_main_menu_keyboard())
 
 
 def _fsm_debt_pay(chat_id, session, state, trimmed):
@@ -683,6 +743,105 @@ def _fsm_custom_date(chat_id, session, state, trimmed):
         send_message(chat_id, "Неверный формат. Используйте YYYY-MM-DD.", build_cancel_keyboard())
 
 
+def _import_add_row(chat_id, session, r: dict, exclude_budget: bool):
+    """Add single row from import to Finance. Store amounts as positive."""
+    from services.excel_import import get_entry_type_from_amount
+    date_str = r.get("date", "")[:10]
+    amount_raw = r.get("amount", 0)
+    entry_type = get_entry_type_from_amount(amount_raw)
+    amount = abs(float(amount_raw))
+    category = _map_bank_category_to_bot(session, r.get("category_bank", "Прочее"))
+    comment = (r.get("description") or "")[:200]
+    add_finance_entry(
+        session, date_str, entry_type, amount, category, comment,
+        exclude_from_budget=exclude_budget,
+    )
+
+
+def _send_import_page(chat_id, session, rows: list, p: dict, pending: set):
+    """Send current page of import rows."""
+    from bot.keyboards import build_import_rows_keyboard
+    pending_list = sorted(pending)
+    start_idx = min(p.get("start_idx", 0), max(0, len(pending_list) - 1))
+    if not pending_list:
+        clear_state(chat_id)
+        added = len(p.get("added", []))
+        skipped = len(p.get("skipped", []))
+        send_message(chat_id, f"Импорт завершён. Добавлено: {added}, пропущено: {skipped}.", build_settings_keyboard())
+        return
+    lines = ["Выберите: + добавить, - пропустить"]
+    pending_list = sorted(pending)
+    for idx in pending_list[start_idx : start_idx + 5]:
+        if idx >= len(rows):
+            continue
+        r = rows[idx]
+        dup = has_finance_duplicate(session, r.get("date", ""), abs(float(r.get("amount", 0))))
+        suffix = " (дубликат)" if dup else ""
+        desc = (r.get("description") or "")[:60]
+        lines.append(f"{r.get('date','')} {int(r.get('amount',0))} {r.get('category_bank','')}{suffix}\n  {desc}")
+    msg = "\n".join(lines) if lines else "Нет операций."
+    send_message(chat_id, msg, build_import_rows_keyboard(rows, start_idx, pending))
+
+
+def _map_bank_category_to_bot(session, bank_cat: str) -> str:
+    """Map bank category to bot category. Config key: CategoryMap:BankCat -> BotCat."""
+    from db.repositories import get_config_param
+    mapped = get_config_param(session, f"CategoryMap:{bank_cat}")
+    if mapped:
+        return mapped
+    if bank_cat in EXPENSE_CATEGORIES:
+        return bank_cat
+    return "Прочее"
+
+
+def _handle_import_excel_document(chat_id, session, state, message):
+    import tempfile
+    import os
+    from services.excel_import import parse_alfa_bank, get_entry_type_from_amount
+    from bot.keyboards import build_import_exclude_budget_keyboard
+
+    doc = message.get("document", {})
+    file_id = doc.get("file_id")
+    file_name = (doc.get("file_name") or "").lower()
+    if not file_id or not (file_name.endswith(".xlsx") or file_name.endswith(".xls")):
+        send_message(chat_id, "Отправьте файл Excel (.xlsx).", build_cancel_keyboard())
+        return
+
+    fd, path = tempfile.mkstemp(suffix=".xlsx")
+    try:
+        os.close(fd)
+        if not download_file(file_id, path):
+            send_message(chat_id, "Не удалось скачать файл.", build_settings_keyboard())
+            return
+        rows = parse_alfa_bank(path)
+    finally:
+        try:
+            os.unlink(path)
+        except Exception:
+            pass
+
+    if not rows:
+        clear_state(chat_id)
+        send_message(chat_id, "В файле нет операций или формат не поддерживается.", build_settings_keyboard())
+        return
+
+    set_state(chat_id, "import_excel_confirm", "exclude_choice", {
+        "rows": rows,
+        "exclude_budget": None,
+        "added": [],
+        "skipped": [],
+        "start_idx": 0,
+    })
+    send_message(chat_id, f"Найдено {len(rows)} операций. Исключить импортированные из бюджета?", build_import_exclude_budget_keyboard())
+
+
+def _fsm_import_excel_confirm(chat_id, session, state, trimmed):
+    """Text handler for import - cancel only."""
+    if trimmed and trimmed.lower() in ("отмена", "cancel"):
+        clear_state(chat_id)
+        send_message(chat_id, "Импорт отменён.", build_settings_keyboard())
+
+
 # ─── handle_callback_query ─────────────────────────────────────
 def handle_callback_query(chat_id: int, callback_query_id: str, data: str, message_id: int | None = None):
     answer_callback_query(callback_query_id)
@@ -737,6 +896,63 @@ def _dispatch_callback(chat_id: int, data: str, session):
         return
     if data == "cmd_settings":
         send_message(chat_id, "Настройки.", build_settings_keyboard())
+        return
+    if data == "import_excel":
+        set_state(chat_id, "import_excel_wait_file", "0", {})
+        send_message(chat_id, "Отправьте файл Excel (выписка Альфа-Банка).", build_cancel_keyboard())
+        return
+    if data in ("import_exclude_yes", "import_exclude_no"):
+        state = get_state_db(session, chat_id)
+        if state and state.get("scenario") == "import_excel_confirm":
+            excl = data == "import_exclude_yes"
+            p = state.get("payload", {})
+            rows = p.get("rows", [])
+            p["exclude_budget"] = excl
+            p["added"] = p.get("added", [])
+            p["skipped"] = p.get("skipped", [])
+            p["start_idx"] = 0
+            pending = set(range(len(rows))) - set(p["added"]) - set(p["skipped"])
+            set_state(chat_id, "import_excel_confirm", "rows", p)
+            _send_import_page(chat_id, session, rows, p, pending)
+        return
+    if data.startswith("import_add_") or data.startswith("import_skip_"):
+        state = get_state_db(session, chat_id)
+        if state and state.get("scenario") == "import_excel_confirm":
+            idx = int(data.split("_")[-1])
+            p = state.get("payload", {})
+            rows = p.get("rows", [])
+            if idx < 0 or idx >= len(rows):
+                return
+            r = rows[idx]
+            if data.startswith("import_add_"):
+                _import_add_row(chat_id, session, r, p.get("exclude_budget", False))
+                p["added"] = p.get("added", []) + [idx]
+            else:
+                p["skipped"] = p.get("skipped", []) + [idx]
+            p["rows"] = rows
+            pending = set(range(len(rows))) - set(p["added"]) - set(p["skipped"])
+            set_state(chat_id, "import_excel_confirm", "rows", p)
+            _send_import_page(chat_id, session, rows, p, pending)
+        return
+    if data.startswith("import_page_"):
+        state = get_state_db(session, chat_id)
+        if state and state.get("scenario") == "import_excel_confirm":
+            start_idx = int(data.split("_")[-1])
+            p = state.get("payload", {})
+            rows = p.get("rows", [])
+            pending = set(range(len(rows))) - set(p["added"]) - set(p["skipped"])
+            p["start_idx"] = max(0, start_idx)
+            set_state(chat_id, "import_excel_confirm", "rows", p)
+            _send_import_page(chat_id, session, rows, p, pending)
+        return
+    if data == "import_done":
+        state = get_state_db(session, chat_id)
+        if state and state.get("scenario") == "import_excel_confirm":
+            p = state.get("payload", {})
+            added = len(p.get("added", []))
+            skipped = len(p.get("skipped", []))
+            clear_state(chat_id)
+            send_message(chat_id, f"Импорт завершён. Добавлено: {added}, пропущено: {skipped}.", build_settings_keyboard())
         return
     if data == "cmd_report":
         msg = handle_monthly_report(chat_id, session)
@@ -898,6 +1114,62 @@ def _dispatch_callback(chat_id: int, data: str, session):
         set_state(chat_id, "debts_add", "counterparty", {"direction": direction})
         send_message(chat_id, "Имя контрагента:", build_cancel_keyboard())
         return
+    if data.startswith("debt_kind_"):
+        state = get_state_db(session, chat_id)
+        if state and state.get("scenario") == "debts_add":
+            kind = data.replace("debt_kind_", "")
+            set_state(chat_id, "debts_add", "payment_mode", {**state.get("payload", {}), "debt_kind": kind})
+            send_message(chat_id, "Как задать платёж?", build_debt_payment_mode_keyboard())
+        return
+    if data == "debt_pmode_calc":
+        state = get_state_db(session, chat_id)
+        if state and state.get("scenario") == "debts_add":
+            set_state(chat_id, "debts_add", "months", state.get("payload", {}))
+            send_message(chat_id, "Срок в месяцах:", build_cancel_keyboard())
+        return
+    if data == "debt_pmode_enter":
+        state = get_state_db(session, chat_id)
+        if state and state.get("scenario") == "debts_add":
+            set_state(chat_id, "debts_add", "monthly_payment", state.get("payload", {}))
+            send_message(chat_id, "Сумма платежа из банка (руб):", build_cancel_keyboard())
+        return
+    if data.startswith("debt_ptype_"):
+        state = get_state_db(session, chat_id)
+        if state and state.get("scenario") == "debts_add":
+            from services.debt_calc import calc_annuity_payment, calc_fixed_first_payment
+            ptype = "annuity" if "annuity" in data else "fixed"
+            p = {**state.get("payload", {}), "payment_type": ptype}
+            amt = p.get("amount", 0)
+            rate = p.get("interest", 0)
+            months = p.get("months", 12)
+            if ptype == "annuity":
+                calc_pmt = calc_annuity_payment(amt, rate, months)
+            else:
+                calc_pmt = calc_fixed_first_payment(amt, rate, months)
+            set_state(chat_id, "debts_add", "confirm_payment", {**p, "calc_payment": calc_pmt})
+            send_message(chat_id, f"Примерный платёж: {int(calc_pmt)} руб.", build_debt_confirm_payment_keyboard(calc_pmt))
+        return
+    if data == "debt_confirm_yes":
+        state = get_state_db(session, chat_id)
+        if state and state.get("scenario") == "debts_add":
+            p = state.get("payload", {})
+            pmt = p.get("calc_payment", 0)
+            set_state(chat_id, "debts_add", "cycle", {**p, "monthly_payment": pmt})
+            send_message(chat_id, "Интервал платежей:", build_debt_cycle_keyboard())
+        return
+    if data == "debt_confirm_custom":
+        state = get_state_db(session, chat_id)
+        if state and state.get("scenario") == "debts_add":
+            set_state(chat_id, "debts_add", "monthly_payment", state.get("payload", {}))
+            send_message(chat_id, "Введите сумму платежа (руб):", build_cancel_keyboard())
+        return
+    if data.startswith("debt_cycle_"):
+        state = get_state_db(session, chat_id)
+        if state and state.get("scenario") == "debts_add":
+            cycle = "biweekly" if "biweekly" in data else "monthly"
+            set_state(chat_id, "debts_add", "next_payment_date", {**state.get("payload", {}), "payment_cycle": cycle})
+            send_message(chat_id, "Дата следующего платежа (YYYY-MM-DD):", build_cancel_keyboard())
+        return
     if data.startswith("debt_detail_"):
         debt_id = data.replace("debt_detail_", "")
         debt = get_debt(session, debt_id)
@@ -908,6 +1180,8 @@ def _dispatch_callback(chat_id: int, data: str, session):
                 f"Сумма: {int(debt.original_amount)} руб.\n"
                 f"Остаток: {int(debt.remaining_amount)} руб.\n"
                 f"Ставка: {debt.interest_rate}%\n"
+                f"Платёж: {int(debt.monthly_payment or 0)} руб.\n"
+                f"След. платёж: {getattr(debt, 'next_payment_date', None) or 'не указан'}\n"
                 f"Срок: {debt.due_date or 'не указан'}"
             )
             send_message(chat_id, msg, build_debt_detail_keyboard(debt_id))

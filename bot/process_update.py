@@ -33,7 +33,7 @@ def process_update(update: dict):
         if "message" in update:
             msg = update["message"]
             chat_id = msg.get("chat", {}).get("id")
-            text = msg.get("text") or "[media]"
+            text = msg.get("text") or ("[document]" if msg.get("document") else "[media]")
             log_info(session, f"processUpdate: chatId={chat_id} {text[:50]}")
             if not is_authorized_chat(chat_id):
                 send_message(
@@ -41,7 +41,7 @@ def process_update(update: dict):
                     f"Ваш Chat ID ({chat_id}) не в списке разрешённых. Добавьте его в Config (CHAT_ID).",
                 )
                 return
-            handle_message(chat_id, text or "", msg.get("message_id"))
+            handle_message(chat_id, text or "", msg.get("message_id"), msg)
 
         elif "callback_query" in update:
             cq = update["callback_query"]

@@ -179,6 +179,7 @@ def add_finance_entry(
     amount: float,
     category: str = "",
     comment: str = "",
+    exclude_from_budget: bool = False,
 ) -> str:
     rid = generate_id()
     session.add(Finance(
@@ -188,6 +189,7 @@ def add_finance_entry(
         amount=amount,
         category=category or "",
         comment=comment or "",
+        exclude_from_budget=exclude_from_budget,
     ))
     session.commit()
     return rid
@@ -420,6 +422,17 @@ def get_finance_by_id(session: Session, fid: str):
     return session.query(Finance).filter(Finance.id == fid).first()
 
 
+def has_finance_duplicate(session: Session, date_str: str, amount: float) -> bool:
+    """Check if record with same date and amount exists (for import dedup)."""
+    date_norm = date_str[:10] if date_str else ""
+    if not date_norm:
+        return False
+    return session.query(Finance).filter(
+        Finance.date == date_norm,
+        Finance.amount == amount,
+    ).first() is not None
+
+
 def update_finance_entry(session: Session, fid: str, amount: float = None, category: str = None, comment: str = None) -> bool:
     r = get_finance_by_id(session, fid)
     if not r:
@@ -444,11 +457,11 @@ def delete_finance_entry(session: Session, fid: str) -> bool:
 
 
 def get_expenses_by_category_for_period(session: Session, start_str: str, end_str: str) -> dict:
-    """Returns {category: total_amount} for Expense type."""
+    """Returns {category: total_amount} for Expense type, excluding exclude_from_budget."""
     rows = get_finance_for_period(session, start_str, end_str)
     result = {}
     for r in rows:
-        if r.type == "Expense" and r.category:
+        if r.type == "Expense" and r.category and not getattr(r, "exclude_from_budget", False):
             result[r.category] = result.get(r.category, 0) + (r.amount or 0)
     return result
 
@@ -457,14 +470,17 @@ def get_expenses_by_category_for_period(session: Session, start_str: str, end_st
 def add_debt(
     session: Session, direction: str, counterparty: str, original_amount: float,
     interest_rate: float = 0, payment_type: str = "fixed",
-    monthly_payment: float = 0, due_date: str = "",
+    monthly_payment: float = 0, payment_cycle: str = "monthly",
+    next_payment_date: str = "", debt_kind: str = "credit", due_date: str = "",
 ) -> str:
     rid = generate_id()
     session.add(Debt(
         id=rid, direction=direction, counterparty=counterparty,
         original_amount=original_amount, remaining_amount=original_amount,
         interest_rate=interest_rate, payment_type=payment_type,
-        monthly_payment=monthly_payment, due_date=due_date or "",
+        monthly_payment=monthly_payment, payment_cycle=payment_cycle or "monthly",
+        next_payment_date=next_payment_date[:10] if next_payment_date else None,
+        debt_kind=debt_kind or "credit", due_date=due_date or "",
     ))
     session.commit()
     return rid
@@ -487,6 +503,8 @@ def add_debt_payment(session: Session, debt_id: str, amount: float, comment: str
     debt.remaining_amount = max(0, (debt.remaining_amount or 0) - amount)
     if debt.remaining_amount <= 0:
         debt.is_active = False
+    else:
+        advance_debt_next_date(session, debt_id)
     session.commit()
     return pid
 
@@ -496,8 +514,33 @@ def get_debt_payments(session: Session, debt_id: str) -> list:
 
 
 def get_debts_due_today(session: Session) -> list:
+    """Debts with due_date or next_payment_date matching today."""
     today = get_today_msk()
-    return session.query(Debt).filter(Debt.is_active == True, Debt.due_date == today).all()
+    debts = session.query(Debt).filter(Debt.is_active == True).all()
+    return [d for d in debts if (d.due_date == today) or (getattr(d, "next_payment_date", None) == today)]
+
+
+def advance_debt_next_date(session: Session, debt_id: str) -> bool:
+    """Move next_payment_date forward by one cycle after payment."""
+    from datetime import datetime, timedelta
+    d = get_debt(session, debt_id)
+    if not d or not getattr(d, "next_payment_date", None):
+        return False
+    try:
+        dt = datetime.strptime(d.next_payment_date[:10], "%Y-%m-%d")
+        cycle = getattr(d, "payment_cycle", "monthly") or "monthly"
+        if cycle == "biweekly":
+            dt = dt + timedelta(days=14)
+        else:
+            if dt.month == 12:
+                dt = dt.replace(year=dt.year + 1, month=1)
+            else:
+                dt = dt.replace(month=dt.month + 1)
+        d.next_payment_date = dt.strftime("%Y-%m-%d")
+        session.commit()
+        return True
+    except Exception:
+        return False
 
 
 def get_debt_summary(session: Session) -> dict:

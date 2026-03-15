@@ -54,6 +54,7 @@ class Finance(Base):
     category = Column(String(64))
     comment = Column(Text)
     tags = Column(Text, default="")
+    exclude_from_budget = Column(Boolean, default=False)
 
 
 class State(Base):
@@ -141,6 +142,9 @@ class Debt(Base):
     interest_rate = Column(Float, default=0)
     payment_type = Column(String(16), default="fixed")  # annuity / fixed
     monthly_payment = Column(Float, default=0)
+    payment_cycle = Column(String(16), default="monthly")  # monthly / biweekly / custom
+    next_payment_date = Column(String(10))  # YYYY-MM-DD
+    debt_kind = Column(String(32), default="credit")  # credit / installment / card / overdraft
     due_date = Column(String(10))
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
