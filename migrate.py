@@ -1,0 +1,28 @@
+"""Add new columns to existing tables."""
+from db.models import engine
+from sqlalchemy import text
+
+MIGRATIONS = [
+    "ALTER TABLE budget_plan ADD COLUMN period_type TEXT DEFAULT 'month'",
+    "ALTER TABLE goals ADD COLUMN goal_type TEXT DEFAULT 'other'",
+    "ALTER TABLE goals ADD COLUMN auto_fund_percent REAL DEFAULT 0",
+    "ALTER TABLE goals ADD COLUMN auto_fund_amount REAL DEFAULT 0",
+    "ALTER TABLE goals ADD COLUMN is_archived INTEGER DEFAULT 0",
+    'ALTER TABLE subscriptions ADD COLUMN "group" TEXT DEFAULT \'other\'',
+    "ALTER TABLE subscriptions ADD COLUMN sub_type TEXT DEFAULT 'expense'",
+    "ALTER TABLE subscriptions ADD COLUMN is_overdue INTEGER DEFAULT 0",
+]
+
+conn = engine.connect()
+for sql in MIGRATIONS:
+    try:
+        conn.execute(text(sql))
+        conn.commit()
+        print(f"OK: {sql[:60]}")
+    except Exception as e:
+        if "duplicate column" in str(e).lower():
+            print(f"Skip (exists): {sql[:60]}")
+        else:
+            print(f"Note: {e}")
+conn.close()
+print("All migrations done")

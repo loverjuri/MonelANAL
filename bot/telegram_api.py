@@ -44,3 +44,29 @@ def edit_message_text(
     if reply_markup:
         body["reply_markup"] = json.dumps(reply_markup)
     return _api("editMessageText", body)
+
+
+def send_document(chat_id: int, document_path: str, caption: str = "") -> dict | None:
+    """Send file as document."""
+    if not BOT_TOKEN:
+        return None
+    url = f"{BASE}{BOT_TOKEN}/sendDocument"
+    try:
+        with open(document_path, "rb") as f:
+            r = requests.post(url, data={"chat_id": chat_id, "caption": caption}, files={"document": f}, timeout=30)
+        return r.json()
+    except Exception:
+        return None
+
+
+def send_photo(chat_id: int, photo_path: str, caption: str = "") -> dict | None:
+    """Send image as photo."""
+    if not BOT_TOKEN:
+        return None
+    url = f"{BASE}{BOT_TOKEN}/sendPhoto"
+    try:
+        with open(photo_path, "rb") as f:
+            r = requests.post(url, data={"chat_id": chat_id, "caption": caption}, files={"photo": f}, timeout=30)
+        return r.json()
+    except Exception:
+        return None

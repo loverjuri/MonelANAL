@@ -53,6 +53,7 @@ class Finance(Base):
     amount = Column(Float, default=0)
     category = Column(String(64))
     comment = Column(Text)
+    tags = Column(Text, default="")
 
 
 class State(Base):
@@ -81,6 +82,115 @@ class Calculation(Base):
     accrued_salary = Column(Float)
     received_salary = Column(Float)
     difference = Column(Float)
+
+
+class BudgetPlan(Base):
+    """Monthly/quarterly budget limits by category."""
+    __tablename__ = "budget_plan"
+    id = Column(String(36), primary_key=True)
+    month_year = Column(String(7), nullable=False)
+    category = Column(String(64), nullable=False)
+    limit_amount = Column(Float, nullable=False)
+    period_type = Column(String(16), default="month")  # month / quarter
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Goal(Base):
+    """Savings/financial goals with types and auto-fund."""
+    __tablename__ = "goals"
+    id = Column(String(36), primary_key=True)
+    name = Column(String(128), nullable=False)
+    target_amount = Column(Float, nullable=False)
+    current_amount = Column(Float, default=0)
+    deadline = Column(String(10))
+    priority = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True)
+    goal_type = Column(String(32), default="other")  # vacation/tech/cushion/purchase/other
+    auto_fund_percent = Column(Float, default=0)
+    auto_fund_amount = Column(Float, default=0)
+    is_archived = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Subscription(Base):
+    """Recurring payments (subscriptions) with groups."""
+    __tablename__ = "subscriptions"
+    id = Column(String(36), primary_key=True)
+    name = Column(String(128), nullable=False)
+    amount = Column(Float, nullable=False)
+    cycle = Column(String(32), nullable=False)
+    next_date = Column(String(10), nullable=False)
+    remind_days_before = Column(Integer, default=1)
+    is_active = Column(Boolean, default=True)
+    auto_create_expense = Column(Boolean, default=False)
+    category = Column(String(64), default="Прочее")
+    group = Column(String(32), default="other")  # streaming/cloud/bank/other
+    sub_type = Column(String(16), default="expense")  # expense / income
+    is_overdue = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Debt(Base):
+    """Debts and credits."""
+    __tablename__ = "debts"
+    id = Column(String(36), primary_key=True)
+    direction = Column(String(16), nullable=False)  # owe / lent
+    counterparty = Column(String(128), nullable=False)
+    original_amount = Column(Float, nullable=False)
+    remaining_amount = Column(Float, nullable=False)
+    interest_rate = Column(Float, default=0)
+    payment_type = Column(String(16), default="fixed")  # annuity / fixed
+    monthly_payment = Column(Float, default=0)
+    due_date = Column(String(10))
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class DebtPayment(Base):
+    """Individual debt payment records."""
+    __tablename__ = "debt_payments"
+    id = Column(String(36), primary_key=True)
+    debt_id = Column(String(36), nullable=False)
+    date = Column(String(10), nullable=False)
+    amount = Column(Float, nullable=False)
+    comment = Column(Text, default="")
+
+
+class Category(Base):
+    """User/system expense categories with hierarchy."""
+    __tablename__ = "categories"
+    id = Column(String(36), primary_key=True)
+    name = Column(String(64), nullable=False)
+    parent_id = Column(String(36))  # NULL = root
+    is_system = Column(Boolean, default=False)
+    usage_count = Column(Integer, default=0)
+
+
+class Tag(Base):
+    """Tags for finance entries."""
+    __tablename__ = "tags"
+    id = Column(String(36), primary_key=True)
+    name = Column(String(64), nullable=False)
+
+
+class ExpenseTemplate(Base):
+    """Quick expense templates."""
+    __tablename__ = "expense_templates"
+    id = Column(String(36), primary_key=True)
+    name = Column(String(128), nullable=False)
+    amount = Column(Float, nullable=False)
+    category = Column(String(64), nullable=False)
+    usage_count = Column(Integer, default=0)
+
+
+class Achievement(Base):
+    """Gamification achievements."""
+    __tablename__ = "achievements"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(64), unique=True, nullable=False)
+    name = Column(String(128), nullable=False)
+    description = Column(Text, default="")
+    unlocked_at = Column(DateTime, default=datetime.utcnow)
 
 
 # Engine and session

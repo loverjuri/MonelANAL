@@ -62,3 +62,126 @@ def send_reminder_second_job(chat_id: int):
             send_message(chat_id, "Напоминание: доходы со второй работы за вчера?", build_second_job_keyboard())
     finally:
         session.close()
+
+
+def send_subscriptions_reminder(chat_id: int):
+    """Daily — Subscriptions due in next 3 days."""
+    from db.repositories import get_subscriptions_due_soon
+    from services.calculations import get_today_msk
+    session = get_session()
+    try:
+        today = get_today_msk()
+        subs = get_subscriptions_due_soon(session, today, 3)
+        if subs:
+            lines = ["Ближайшие платежи:"]
+            for s in subs:
+                lines.append(f"• {s.name}: {int(s.amount)} руб. — {s.next_date}")
+            send_message(chat_id, "\n".join(lines))
+    finally:
+        session.close()
+
+
+def send_overspend_digest(chat_id: int):
+    """Daily digest with overspend, recommendations, goal hints."""
+    from services.notifications import should_send_now
+    session = get_session()
+    try:
+        if not should_send_now(session):
+            return
+        from services.recommendations import generate_daily_digest
+        digest = generate_daily_digest(session)
+        if digest:
+            send_message(chat_id, digest)
+    except Exception:
+        from services.budget import get_budget_status
+        st = get_budget_status(session)
+        if st["over"]:
+            lines = ["⚠ Перерасход по категориям:"]
+            for o in st["over"]:
+                lines.append(f"• {o['category']}: лимит {int(o['limit'])}, потрачено {int(o['spent'])} (+{int(o['over'])})")
+            send_message(chat_id, "\n".join(lines))
+    finally:
+        session.close()
+
+
+def send_debt_reminders(chat_id: int):
+    """Daily — Debts due today."""
+    from db.repositories import get_debts_due_today
+    from services.notifications import should_send_now
+    session = get_session()
+    try:
+        if not should_send_now(session):
+            return
+        debts = get_debts_due_today(session)
+        if debts:
+            lines = ["Напоминание о долгах:"]
+            for d in debts:
+                direction = "Вы должны" if d.direction == "owe" else "Вам должны"
+                lines.append(f"• {direction} {d.counterparty}: {int(d.remaining_amount)} руб.")
+            send_message(chat_id, "\n".join(lines))
+    finally:
+        session.close()
+
+
+def send_goal_deadline_reminder(chat_id: int):
+    """Monthly — Goals approaching deadline."""
+    from db.repositories import get_active_goals
+    from services.notifications import should_send_now
+    from services.calculations import get_today_msk
+    from datetime import datetime, timedelta
+    session = get_session()
+    try:
+        if not should_send_now(session):
+            return
+        today = get_today_msk()
+        threshold = (datetime.strptime(today, "%Y-%m-%d") + timedelta(days=30)).strftime("%Y-%m-%d")
+        goals = get_active_goals(session)
+        approaching = [g for g in goals if g.deadline and g.deadline <= threshold and g.current_amount < g.target_amount]
+        if approaching:
+            lines = ["Цели с приближающимся сроком:"]
+            for g in approaching:
+                remaining = int(g.target_amount - g.current_amount)
+                lines.append(f"• {g.name}: осталось {remaining} руб. (срок {g.deadline})")
+            send_message(chat_id, "\n".join(lines))
+    finally:
+        session.close()
+
+
+def send_auto_backup(chat_id: int):
+    """Daily — Auto backup."""
+    from services.notifications import should_send_now
+    import os
+    session = get_session()
+    try:
+        if not should_send_now(session):
+            return
+        from services.backup import create_backup_json
+        from bot.telegram_api import send_document
+        path = create_backup_json(session)
+        send_document(chat_id, path, "Ежедневный бэкап MonelANAL")
+        try:
+            os.unlink(path)
+        except Exception:
+            pass
+    finally:
+        session.close()
+
+
+def send_auto_subscriptions(chat_id: int):
+    """Daily — Process auto-create subscriptions."""
+    from db.repositories import process_due_subscriptions
+    from services.calculations import get_today_msk
+    from services.notifications import should_send_now
+    session = get_session()
+    try:
+        if not should_send_now(session):
+            return
+        today = get_today_msk()
+        created = process_due_subscriptions(session, today)
+        if created:
+            lines = ["Авто-списания:"]
+            for c in created:
+                lines.append(f"• {c['name']}: {int(c['amount'])} руб.")
+            send_message(chat_id, "\n".join(lines))
+    finally:
+        session.close()

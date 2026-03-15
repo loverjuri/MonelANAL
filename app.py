@@ -130,6 +130,127 @@ def cron_reminder_second():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/cron/subscriptions", methods=["GET"])
+def cron_subscriptions():
+    """Daily — Subscriptions due soon reminder."""
+    if not _check_cron_token():
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        from bot.prompts import send_subscriptions_reminder
+        from config import get_chat_id
+        chat_id = get_chat_id()
+        if chat_id:
+            send_subscriptions_reminder(int(chat_id))
+        return "OK", 200
+    except Exception as e:
+        app.logger.exception("cron subscriptions: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/cron/overspend-digest", methods=["GET"])
+def cron_overspend_digest():
+    """Daily — Overspend categories digest."""
+    if not _check_cron_token():
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        from bot.prompts import send_overspend_digest
+        from config import get_chat_id
+        chat_id = get_chat_id()
+        if chat_id:
+            send_overspend_digest(int(chat_id))
+        return "OK", 200
+    except Exception as e:
+        app.logger.exception("cron overspend-digest: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/cron/debt-reminders", methods=["GET"])
+def cron_debt_reminders():
+    """Daily — Debt payment reminders."""
+    if not _check_cron_token():
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        from bot.prompts import send_debt_reminders
+        from config import get_chat_id
+        chat_id = get_chat_id()
+        if chat_id:
+            send_debt_reminders(int(chat_id))
+        return "OK", 200
+    except Exception as e:
+        app.logger.exception("cron debt-reminders: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/cron/goal-deadline", methods=["GET"])
+def cron_goal_deadline():
+    """Monthly — Goal deadline reminders."""
+    if not _check_cron_token():
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        from bot.prompts import send_goal_deadline_reminder
+        from config import get_chat_id
+        chat_id = get_chat_id()
+        if chat_id:
+            send_goal_deadline_reminder(int(chat_id))
+        return "OK", 200
+    except Exception as e:
+        app.logger.exception("cron goal-deadline: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/cron/backup", methods=["GET"])
+def cron_backup():
+    """Daily — Auto backup."""
+    if not _check_cron_token():
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        from bot.prompts import send_auto_backup
+        from config import get_chat_id
+        chat_id = get_chat_id()
+        if chat_id:
+            send_auto_backup(int(chat_id))
+        return "OK", 200
+    except Exception as e:
+        app.logger.exception("cron backup: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/cron/auto-subscriptions", methods=["GET"])
+def cron_auto_subscriptions():
+    """Daily — Process auto-create subscriptions."""
+    if not _check_cron_token():
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        from bot.prompts import send_auto_subscriptions
+        from config import get_chat_id
+        chat_id = get_chat_id()
+        if chat_id:
+            send_auto_subscriptions(int(chat_id))
+        return "OK", 200
+    except Exception as e:
+        app.logger.exception("cron auto-subscriptions: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/cron/cleanup-logs", methods=["GET"])
+def cron_cleanup_logs():
+    """Weekly — Cleanup old logs."""
+    if not _check_cron_token():
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        from services.backup import cleanup_old_logs
+        from db.repositories import get_session
+        session = get_session()
+        try:
+            cleanup_old_logs(session, 30)
+        finally:
+            session.close()
+        return "OK", 200
+    except Exception as e:
+        app.logger.exception("cron cleanup-logs: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/cron/prod-calendar", methods=["GET"])
 def cron_prod_calendar():
     """1st of month — Update prod calendar (manual mode: no-op or regenerate default)."""
