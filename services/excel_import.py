@@ -14,6 +14,16 @@ def _parse_amount(val) -> float:
         return 0.0
 
 
+def _looks_like_amount(val) -> bool:
+    """True if val looks like a number (e.g. -13,31 or 4 015)."""
+    if val is None or not str(val).strip():
+        return False
+    s = str(val).strip().replace(" ", "").replace(",", ".")
+    if s.startswith("-") or s.startswith("+"):
+        s = s[1:]
+    return s.replace(".", "", 1).isdigit()
+
+
 def _parse_date(val) -> str | None:
     """Parse DD.MM.YYYY -> YYYY-MM-DD."""
     if val is None or not str(val).strip():
@@ -51,6 +61,8 @@ def parse_alfa_bank(xlsx_path: str | Path) -> list[dict]:
 
     result = []
     # Header row 19, data from row 20
+    # Alfa-Bank format: 0=date, 1=post_date, 4=category, 10/11=description, 11/12=amount
+    # Newer exports: description at 11, amount at 12
     for i, row in enumerate(ws.iter_rows(values_only=True)):
         if i < 19:
             continue
@@ -60,8 +72,16 @@ def parse_alfa_bank(xlsx_path: str | Path) -> list[dict]:
         date_val = vals[0] if len(vals) > 0 else None
         post_date = vals[1] if len(vals) > 1 else None
         category_bank = str(vals[4]).strip() if len(vals) > 4 and vals[4] else ""
-        description = str(vals[10]).strip() if len(vals) > 10 and vals[10] else ""
-        amount_raw = vals[11] if len(vals) > 11 else None
+        # Newer Alfa format: description at 11, amount at 12
+        # Older format: description at 10, amount at 11
+        desc_10 = str(vals[10]).strip() if len(vals) > 10 and vals[10] else ""
+        desc_11 = str(vals[11]).strip() if len(vals) > 11 and vals[11] else ""
+        if _looks_like_amount(desc_11):
+            description = desc_10
+            amount_raw = vals[11]
+        else:
+            description = desc_11
+            amount_raw = vals[12] if len(vals) > 12 else vals[11]
 
         if str(post_date or "").strip().upper() == "HOLD":
             continue
