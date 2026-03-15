@@ -11,6 +11,7 @@ from db.models import (
     Config, WorkLog, Order, Finance, State, Log, Calculation,
     BudgetPlan, Goal, Subscription,
     Debt, DebtPayment, Category, Tag, ExpenseTemplate, Achievement,
+    AuditLog,
 )
 
 TZ = ZoneInfo("Europe/Moscow")
@@ -128,6 +129,24 @@ def has_work_log_for_date(session: Session, date_str: str, job_type: Optional[st
     return q.first() is not None
 
 
+def get_work_log(session: Session, wl_id: str):
+    return session.query(WorkLog).filter(WorkLog.id == wl_id).first()
+
+
+def update_work_log(session: Session, wl_id: str, **kwargs) -> bool:
+    w = get_work_log(session, wl_id)
+    if not w:
+        return False
+    for k, v in kwargs.items():
+        if hasattr(w, k):
+            if k == "date" and v:
+                setattr(w, k, v[:10])
+            else:
+                setattr(w, k, v)
+    session.commit()
+    return True
+
+
 # Orders
 def add_order(session: Session, date_str: str, description: str, amount: float, status: str = "New") -> str:
     oid = generate_id()
@@ -152,6 +171,33 @@ def add_order_with_items(session: Session, date_str: str, items: list) -> Option
         total += amt
         desc_parts.append(f"{str(it.get('description', '')).strip()} — {amt}")
     return add_order(session, date_str[:10], "; ".join(desc_parts), total)
+
+
+def get_order(session: Session, order_id: str):
+    return session.query(Order).filter(Order.order_id == order_id).first()
+
+
+def update_order(session: Session, order_id: str, **kwargs) -> bool:
+    o = get_order(session, order_id)
+    if not o:
+        return False
+    for k, v in kwargs.items():
+        if hasattr(o, k):
+            if k == "date" and v:
+                setattr(o, k, v[:10])
+            else:
+                setattr(o, k, v)
+    session.commit()
+    return True
+
+
+def delete_order(session: Session, order_id: str) -> bool:
+    o = get_order(session, order_id)
+    if not o:
+        return False
+    session.delete(o)
+    session.commit()
+    return True
 
 
 def get_orders_for_period(session: Session, start_str: str, end_str: str):
@@ -195,11 +241,14 @@ def add_finance_entry(
     return rid
 
 
-def get_finance_for_period(session: Session, start_str: str, end_str: str):
-    return session.query(Finance).filter(
+def get_finance_for_period(session: Session, start_str: str, end_str: str, include_deleted: bool = False):
+    q = session.query(Finance).filter(
         Finance.date >= start_str,
         Finance.date <= end_str,
-    ).all()
+    )
+    if not include_deleted:
+        q = q.filter(Finance.is_deleted == False)
+    return q.all()
 
 
 def record_payday_received(
@@ -340,13 +389,72 @@ def update_goal_current(session: Session, goal_id: str, add_amount: float) -> bo
     return True
 
 
+def update_goal(session: Session, goal_id: str, **kwargs) -> bool:
+    g = session.query(Goal).filter(Goal.id == goal_id).first()
+    if not g:
+        return False
+    for k, v in kwargs.items():
+        if hasattr(g, k):
+            if k in ("deadline",) and v is not None:
+                setattr(g, k, v[:10] if v else "")
+            else:
+                setattr(g, k, v)
+    session.commit()
+    return True
+
+
 def get_goal(session: Session, goal_id: str):
     return session.query(Goal).filter(Goal.id == goal_id).first()
+
+
+def transfer_between_goals(session: Session, from_goal_id: str, to_goal_id: str, amount: float) -> bool:
+    """Transfer amount from one goal to another. Both must exist and from must have enough."""
+    from_g = get_goal(session, from_goal_id)
+    to_g = get_goal(session, to_goal_id)
+    if not from_g or not to_g or from_goal_id == to_goal_id:
+        return False
+    if amount <= 0 or (from_g.current_amount or 0) < amount:
+        return False
+    from_g.current_amount = (from_g.current_amount or 0) - amount
+    to_g.current_amount = (to_g.current_amount or 0) + amount
+    session.commit()
+    return True
 
 
 # Subscription
 def get_active_subscriptions(session: Session) -> list:
     return session.query(Subscription).filter(Subscription.is_active == True).all()
+
+
+def get_inactive_subscriptions(session: Session) -> list:
+    return session.query(Subscription).filter(Subscription.is_active == False).all()
+
+
+def get_subscription(session: Session, sub_id: str):
+    return session.query(Subscription).filter(Subscription.id == sub_id).first()
+
+
+def update_subscription(session: Session, sub_id: str, **kwargs) -> bool:
+    s = get_subscription(session, sub_id)
+    if not s:
+        return False
+    for k, v in kwargs.items():
+        if hasattr(s, k):
+            if k == "next_date" and v is not None:
+                setattr(s, k, v[:10] if v else s.next_date)
+            else:
+                setattr(s, k, v)
+    session.commit()
+    return True
+
+
+def delete_subscription(session: Session, sub_id: str) -> bool:
+    s = get_subscription(session, sub_id)
+    if not s:
+        return False
+    session.delete(s)
+    session.commit()
+    return True
 
 
 def add_subscription(
@@ -412,14 +520,63 @@ def advance_subscription_date(session: Session, sub_id: str) -> bool:
 
 # Finance - last entry and update/delete
 def get_last_finance_entry(session: Session, entry_type: str = None, limit: int = 1) -> list:
-    q = session.query(Finance).order_by(Finance.date.desc(), Finance.id.desc())
+    q = session.query(Finance).filter(Finance.is_deleted == False).order_by(
+        Finance.date.desc(), Finance.id.desc()
+    )
     if entry_type:
         q = q.filter(Finance.type == entry_type)
     return q.limit(limit).all()
 
 
-def get_finance_by_id(session: Session, fid: str):
-    return session.query(Finance).filter(Finance.id == fid).first()
+def get_finance_by_id(session: Session, fid: str, include_deleted: bool = False):
+    q = session.query(Finance).filter(Finance.id == fid)
+    if not include_deleted:
+        q = q.filter(Finance.is_deleted == False)
+    return q.first()
+
+
+def log_audit(session: Session, chat_id: str, entity: str, entity_id: str, action: str, field: str = None, old_value=None, new_value=None):
+    session.add(AuditLog(
+        chat_id=str(chat_id),
+        entity=entity,
+        entity_id=entity_id,
+        action=action,
+        field=field,
+        old_value=str(old_value) if old_value is not None else None,
+        new_value=str(new_value) if new_value is not None else None,
+    ))
+    session.commit()
+
+
+def mass_finance_operations(session: Session, start_str: str, end_str: str, category: str = None,
+                           action: str = "soft_delete") -> int:
+    """action: soft_delete or exclude_from_budget. Returns count of affected rows."""
+    q = session.query(Finance).filter(
+        Finance.date >= start_str, Finance.date <= end_str,
+        Finance.is_deleted == False,
+    )
+    if category and category != "all":
+        q = q.filter(Finance.category == category)
+    rows = q.all()
+    count = 0
+    for r in rows:
+        if action == "soft_delete":
+            r.is_deleted = True
+            count += 1
+        elif action == "exclude_from_budget" and r.type == "Expense":
+            r.exclude_from_budget = True
+            count += 1
+    session.commit()
+    return count
+
+
+def soft_delete_finance_entry(session: Session, fid: str) -> bool:
+    r = session.query(Finance).filter(Finance.id == fid).first()
+    if not r:
+        return False
+    r.is_deleted = True
+    session.commit()
+    return True
 
 
 def has_finance_duplicate(session: Session, date_str: str, amount: float) -> bool:
@@ -427,14 +584,14 @@ def has_finance_duplicate(session: Session, date_str: str, amount: float) -> boo
     date_norm = date_str[:10] if date_str else ""
     if not date_norm:
         return False
-    return session.query(Finance).filter(
-        Finance.date == date_norm,
-        Finance.amount == amount,
-    ).first() is not None
+    q = session.query(Finance).filter(Finance.date == date_norm, Finance.amount == amount)
+    q = q.filter(Finance.is_deleted == False)
+    return q.first() is not None
 
 
-def update_finance_entry(session: Session, fid: str, amount: float = None, category: str = None, comment: str = None) -> bool:
-    r = get_finance_by_id(session, fid)
+def update_finance_entry(session: Session, fid: str, amount: float = None, category: str = None, comment: str = None,
+                        date: str = None, entry_type: str = None, exclude_from_budget: bool = None) -> bool:
+    r = session.query(Finance).filter(Finance.id == fid).first()
     if not r:
         return False
     if amount is not None:
@@ -443,6 +600,12 @@ def update_finance_entry(session: Session, fid: str, amount: float = None, categ
         r.category = category
     if comment is not None:
         r.comment = comment
+    if date is not None:
+        r.date = date[:10]
+    if entry_type is not None:
+        r.type = entry_type
+    if exclude_from_budget is not None:
+        r.exclude_from_budget = exclude_from_budget
     session.commit()
     return True
 
@@ -494,19 +657,85 @@ def get_debt(session: Session, debt_id: str):
     return session.query(Debt).filter(Debt.id == debt_id).first()
 
 
-def add_debt_payment(session: Session, debt_id: str, amount: float, comment: str = "") -> str | None:
+def add_debt_payment(session: Session, debt_id: str, amount: float, comment: str = "", date: str = None) -> str | None:
     debt = get_debt(session, debt_id)
     if not debt:
         return None
     pid = generate_id()
-    session.add(DebtPayment(id=pid, debt_id=debt_id, date=get_today_msk(), amount=amount, comment=comment))
+    date_str = (date[:10] if date else None) or get_today_msk()
+    session.add(DebtPayment(id=pid, debt_id=debt_id, date=date_str, amount=amount, comment=comment))
     debt.remaining_amount = max(0, (debt.remaining_amount or 0) - amount)
     if debt.remaining_amount <= 0:
         debt.is_active = False
     else:
-        advance_debt_next_date(session, debt_id)
+        if date_str == get_today_msk():
+            advance_debt_next_date(session, debt_id)
     session.commit()
     return pid
+
+
+def get_debt_payment(session: Session, payment_id: str):
+    return session.query(DebtPayment).filter(DebtPayment.id == payment_id).first()
+
+
+def update_debt_payment(session: Session, payment_id: str, amount: float = None, date: str = None) -> bool:
+    p = get_debt_payment(session, payment_id)
+    if not p:
+        return False
+    if amount is not None:
+        delta = amount - p.amount
+        p.amount = amount
+        debt = get_debt(session, p.debt_id)
+        if debt:
+            debt.remaining_amount = max(0, (debt.remaining_amount or 0) + delta)
+            if debt.remaining_amount > 0 and not debt.is_active:
+                debt.is_active = True
+    if date is not None:
+        p.date = date[:10]
+    session.commit()
+    return True
+
+
+def delete_debt_payment(session: Session, payment_id: str) -> bool:
+    p = get_debt_payment(session, payment_id)
+    if not p:
+        return False
+    debt = get_debt(session, p.debt_id)
+    if debt:
+        debt.remaining_amount = (debt.remaining_amount or 0) + p.amount
+        debt.is_active = True
+    session.delete(p)
+    session.commit()
+    return True
+
+
+def update_debt(session: Session, debt_id: str, **kwargs) -> bool:
+    debt = get_debt(session, debt_id)
+    if not debt:
+        return False
+    for k, v in kwargs.items():
+        if hasattr(debt, k):
+            if k == "next_payment_date" and v is not None:
+                setattr(debt, k, v[:10] if v else None)
+            elif k == "due_date" and v is not None:
+                setattr(debt, k, v[:10] if v else "")
+            else:
+                setattr(debt, k, v)
+    session.commit()
+    return True
+
+
+def update_debt_remaining_with_comment(session: Session, debt_id: str, new_remaining: float, comment: str) -> bool:
+    debt = get_debt(session, debt_id)
+    if not debt:
+        return False
+    debt.remaining_amount = max(0, new_remaining)
+    if debt.remaining_amount <= 0:
+        debt.is_active = False
+    else:
+        debt.is_active = True
+    session.commit()
+    return True
 
 
 def get_debt_payments(session: Session, debt_id: str) -> list:
@@ -596,6 +825,24 @@ def add_tag(session: Session, name: str) -> str:
     return rid
 
 
+def update_tag(session: Session, tag_id: str, name: str) -> bool:
+    t = session.query(Tag).filter(Tag.id == tag_id).first()
+    if not t:
+        return False
+    t.name = name
+    session.commit()
+    return True
+
+
+def delete_tag(session: Session, tag_id: str) -> bool:
+    t = session.query(Tag).filter(Tag.id == tag_id).first()
+    if not t:
+        return False
+    session.delete(t)
+    session.commit()
+    return True
+
+
 def get_tags(session: Session) -> list:
     return session.query(Tag).all()
 
@@ -603,6 +850,30 @@ def get_tags(session: Session) -> list:
 # ExpenseTemplate
 def get_templates(session: Session) -> list:
     return session.query(ExpenseTemplate).order_by(ExpenseTemplate.usage_count.desc()).all()
+
+
+def get_template(session: Session, template_id: str):
+    return session.query(ExpenseTemplate).filter(ExpenseTemplate.id == template_id).first()
+
+
+def update_template(session: Session, template_id: str, **kwargs) -> bool:
+    t = get_template(session, template_id)
+    if not t:
+        return False
+    for k, v in kwargs.items():
+        if hasattr(t, k):
+            setattr(t, k, v)
+    session.commit()
+    return True
+
+
+def delete_template(session: Session, template_id: str) -> bool:
+    t = get_template(session, template_id)
+    if not t:
+        return False
+    session.delete(t)
+    session.commit()
+    return True
 
 
 def add_template(session: Session, name: str, amount: float, category: str) -> str:
@@ -676,12 +947,15 @@ def process_due_subscriptions(session: Session, today_str: str) -> list:
 
 # Finance history/search
 def get_finance_history(session: Session, limit: int = 20) -> list:
-    return session.query(Finance).order_by(Finance.date.desc(), Finance.id.desc()).limit(limit).all()
+    return session.query(Finance).filter(Finance.is_deleted == False).order_by(
+        Finance.date.desc(), Finance.id.desc()
+    ).limit(limit).all()
 
 
 def search_finance(session: Session, query: str, limit: int = 20) -> list:
     q = f"%{query}%"
     return session.query(Finance).filter(
+        Finance.is_deleted == False,
         (Finance.comment.like(q)) | (Finance.category.like(q))
     ).order_by(Finance.date.desc()).limit(limit).all()
 
@@ -689,6 +963,35 @@ def search_finance(session: Session, query: str, limit: int = 20) -> list:
 # Achievement
 def get_achievements(session: Session) -> list:
     return session.query(Achievement).all()
+
+
+def delete_achievement(session: Session, achievement_id: int) -> bool:
+    a = session.query(Achievement).filter(Achievement.id == achievement_id).first()
+    if not a:
+        return False
+    session.delete(a)
+    session.commit()
+    return True
+
+
+# Calculation
+def get_calculations(session: Session, limit: int = 20) -> list:
+    return session.query(Calculation).order_by(Calculation.id.desc()).limit(limit).all()
+
+
+def get_calculation(session: Session, calc_id: int):
+    return session.query(Calculation).filter(Calculation.id == calc_id).first()
+
+
+def update_calculation(session: Session, calc_id: int, **kwargs) -> bool:
+    c = get_calculation(session, calc_id)
+    if not c:
+        return False
+    for k, v in kwargs.items():
+        if hasattr(c, k):
+            setattr(c, k, v)
+    session.commit()
+    return True
 
 
 # Seed system categories

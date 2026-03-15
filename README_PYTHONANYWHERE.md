@@ -148,6 +148,21 @@ python run_init.py
 
 ---
 
+## 6a. Миграции (после обновления кода)
+
+Если вы обновили код (git pull), запустите миграции для новых колонок:
+
+```bash
+cd ~/monelanal
+source venv/bin/activate
+pip install -r requirements.txt
+python migrate.py
+```
+
+Без этого появятся ошибки `no such column: finance.exclude_from_budget` и `no such column: debts.payment_cycle`.
+
+---
+
 ## 7. Установка webhook
 
 ```bash

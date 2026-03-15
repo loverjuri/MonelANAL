@@ -55,6 +55,20 @@ class Finance(Base):
     comment = Column(Text)
     tags = Column(Text, default="")
     exclude_from_budget = Column(Boolean, default=False)
+    is_deleted = Column(Boolean, default=False)
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_log"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    chat_id = Column(String(32))
+    entity = Column(String(32))
+    entity_id = Column(String(64))
+    action = Column(String(16))
+    field = Column(String(64))
+    old_value = Column(Text)
+    new_value = Column(Text)
 
 
 class State(Base):

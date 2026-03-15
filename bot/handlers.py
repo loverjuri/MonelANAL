@@ -2,11 +2,17 @@
 from db.repositories import (
     get_session,
     add_work_log,
+    get_work_log,
+    get_work_log_for_period,
+    update_work_log,
     add_order,
     add_order_with_items,
     add_finance_entry,
     record_payday_received,
     get_orders_for_period,
+    get_order,
+    update_order,
+    delete_order,
     get_budget_limits_map,
     set_budget_plan_limit,
     get_active_goals,
@@ -14,12 +20,19 @@ from db.repositories import (
     update_goal_current,
     get_goal,
     get_active_subscriptions,
+    get_inactive_subscriptions,
+    get_subscription,
     add_subscription,
     get_subscriptions_due_soon,
+    update_subscription,
+    delete_subscription,
     get_last_finance_entry,
     get_finance_by_id,
     update_finance_entry,
     delete_finance_entry,
+    soft_delete_finance_entry,
+    mass_finance_operations,
+    log_audit,
     has_finance_duplicate,
     get_finance_for_period,
     log_info,
@@ -30,7 +43,12 @@ from db.repositories import (
     get_debt,
     add_debt_payment,
     get_debt_payments,
+    get_debt_payment,
     get_debt_summary,
+    update_debt,
+    update_debt_remaining_with_comment,
+    update_debt_payment,
+    delete_debt_payment,
     # Phase 2: Categories
     get_top_categories,
     increment_category_usage,
@@ -41,14 +59,27 @@ from db.repositories import (
     # Phase 8: UX
     get_finance_history,
     search_finance,
+    get_tags,
+    add_tag,
+    update_tag,
+    delete_tag,
     get_templates,
+    get_template,
     add_template,
+    update_template,
+    delete_template,
     use_template,
     # Phase 4: Goals ext
     archive_goal,
     get_archived_goals,
+    update_goal,
+    transfer_between_goals,
     # Phase 9: Achievements
     get_achievements,
+    delete_achievement,
+    get_calculations,
+    get_calculation,
+    update_calculation,
     # Config
     get_config_param,
     set_config_param,
@@ -82,13 +113,29 @@ from bot.keyboards import (
     build_status_keyboard,
     build_budget_keyboard,
     build_budget_categories_keyboard,
+    build_worklog_period_keyboard,
+    build_worklog_list_keyboard,
+    build_orders_period_keyboard,
+    build_orders_list_keyboard,
     build_goals_keyboard,
     build_goal_select_keyboard,
+    build_goal_detail_keyboard,
+    build_goal_edit_field_keyboard,
+    build_goal_transfer_target_keyboard,
     build_subscriptions_keyboard,
+    build_subs_select_keyboard,
+    build_subs_detail_keyboard,
+    build_subs_edit_field_keyboard,
+    build_subs_cycle_keyboard,
+    build_subs_group_keyboard,
     build_edit_last_keyboard,
     build_debts_keyboard,
     build_debt_direction_keyboard,
     build_debt_detail_keyboard,
+    build_debt_edit_field_keyboard,
+    build_debt_cycle_edit_keyboard,
+    build_debt_kind_edit_keyboard,
+    build_debt_history_keyboard,
     build_debt_select_keyboard,
     build_debt_kind_keyboard,
     build_debt_payment_mode_keyboard,
@@ -99,11 +146,24 @@ from bot.keyboards import (
     build_period_keyboard,
     build_history_keyboard,
     build_templates_keyboard,
+    build_tpl_edit_keyboard,
     build_settings_keyboard,
+    build_config_params_keyboard,
+    build_edit_menu_keyboard,
+    build_tags_keyboard,
+    build_achievements_keyboard,
+    build_calculations_keyboard,
+    build_mass_period_keyboard,
+    build_mass_category_keyboard,
+    build_mass_action_keyboard,
+    CONFIG_PARAMS,
     build_goal_type_keyboard,
+    build_goal_type_keyboard_for_edit,
     build_confirm_keyboard,
     build_date_choice_keyboard,
     build_recent_entries_keyboard,
+    build_finance_edit_field_keyboard,
+    build_finance_type_keyboard,
     EXPENSE_CATEGORIES,
 )
 
@@ -230,8 +290,23 @@ def handle_message(chat_id: int, text: str, message_id: int | None = None, messa
         if scenario == "edit_expense":
             _fsm_edit_expense(chat_id, session, state, trimmed)
             return
+        if scenario == "finance_edit":
+            _fsm_finance_edit(chat_id, session, state, trimmed)
+            return
+        if scenario == "finance_soft_delete_confirm":
+            _fsm_finance_soft_delete_confirm(chat_id, session, state, trimmed)
+            return
         if scenario == "budget_set_amount":
             _fsm_budget_set_amount(chat_id, session, state, trimmed)
+            return
+        if scenario == "budget_bulk":
+            _fsm_budget_bulk(chat_id, session, state, trimmed)
+            return
+        if scenario == "worklog_edit":
+            _fsm_worklog_edit(chat_id, session, state, trimmed)
+            return
+        if scenario == "order_edit":
+            _fsm_order_edit(chat_id, session, state, trimmed)
             return
         if scenario == "goals_add":
             _fsm_goals_add(chat_id, session, state, trimmed)
@@ -248,6 +323,43 @@ def handle_message(chat_id: int, text: str, message_id: int | None = None, messa
         if scenario == "debt_pay_amount":
             _fsm_debt_pay(chat_id, session, state, trimmed)
             return
+        if scenario == "debt_edit":
+            _fsm_debt_edit(chat_id, session, state, trimmed)
+            return
+        if scenario == "debt_remaining_comment":
+            _fsm_debt_remaining_comment(chat_id, session, state, trimmed)
+            return
+        if scenario == "debt_pay_add":
+            _fsm_debt_pay_add(chat_id, session, state, trimmed)
+            return
+        if scenario == "debt_payment_edit":
+            _fsm_debt_payment_edit(chat_id, session, state, trimmed)
+            return
+        if scenario == "goal_edit":
+            _fsm_goal_edit(chat_id, session, state, trimmed)
+            return
+        if scenario == "goal_transfer_amount":
+            _fsm_goal_transfer_amount(chat_id, session, state, trimmed)
+            return
+        if scenario == "subs_edit":
+            _fsm_subs_edit(chat_id, session, state, trimmed)
+            return
+        if scenario == "tpl_edit":
+            _fsm_tpl_edit(chat_id, session, state, trimmed)
+            return
+        if scenario == "subs_delete_confirm":
+            if trimmed.strip().upper() == "ДА":
+                sub_id = state["payload"].get("sub_id", "")
+                if delete_subscription(session, sub_id):
+                    log_audit(session, chat_id, "subscription", sub_id, "delete", None, None, None)
+                    clear_state(chat_id)
+                    send_message(chat_id, "Подписка удалена.", build_main_menu_keyboard())
+                else:
+                    clear_state(chat_id)
+                    send_message(chat_id, "Ошибка удаления.", build_main_menu_keyboard())
+            else:
+                send_message(chat_id, "Напишите ДА для подтверждения.", build_cancel_keyboard())
+            return
         if scenario == "search":
             _fsm_search(chat_id, session, state, trimmed)
             return
@@ -259,6 +371,58 @@ def handle_message(chat_id: int, text: str, message_id: int | None = None, messa
             return
         if scenario == "settings_threshold":
             _fsm_settings_threshold(chat_id, session, state, trimmed)
+            return
+        if scenario == "config_edit":
+            _fsm_config_edit(chat_id, session, state, trimmed)
+            return
+        if scenario == "tag_add":
+            if trimmed.strip():
+                add_tag(session, trimmed.strip())
+                log_audit(session, chat_id, "tag", trimmed.strip(), "create", None, None, None)
+                tags = get_tags(session)
+                clear_state(chat_id)
+                send_message(chat_id, f"Тег «{trimmed.strip()}» добавлен.", build_tags_keyboard(tags))
+            else:
+                send_message(chat_id, "Введите название.", build_cancel_keyboard())
+            return
+        if scenario == "tag_rename":
+            tag_id = state["payload"].get("tag_id", "")
+            if trimmed.strip() and tag_id:
+                if update_tag(session, tag_id, name=trimmed.strip()):
+                    log_audit(session, chat_id, "tag", tag_id, "update", "name", None, trimmed.strip())
+                tags = get_tags(session)
+                clear_state(chat_id)
+                send_message(chat_id, f"Тег переименован в «{trimmed.strip()}»", build_tags_keyboard(tags))
+            else:
+                send_message(chat_id, "Введите название.", build_cancel_keyboard())
+            return
+        if scenario == "finance_mass_confirm":
+            if trimmed.strip().upper() == "ДА":
+                p = state["payload"]
+                cat = p.get("category") if p.get("category") != "all" else None
+                cnt = mass_finance_operations(session, p["start"], p["end"], category=cat, action=p.get("action", "soft_delete"))
+                log_audit(session, chat_id, "finance", "mass", p.get("action", ""), str(cnt), None, None)
+                clear_state(chat_id)
+                act = "удалено" if p.get("action") == "soft_delete" else "исключено из бюджета"
+                send_message(chat_id, f"Массовая операция: {act} {cnt} записей.", build_main_menu_keyboard())
+            else:
+                send_message(chat_id, "Напишите ДА для подтверждения.", build_cancel_keyboard())
+            return
+        if scenario == "calc_edit":
+            parts = trimmed.strip().split()
+            if len(parts) >= 2:
+                try:
+                    accrued = float(parts[0].replace(",", "."))
+                    received = float(parts[1].replace(",", "."))
+                    calc_id = state["payload"].get("calc_id")
+                    if update_calculation(session, calc_id, accrued_salary=accrued, received_salary=received, difference=accrued - received):
+                        log_audit(session, chat_id, "calculation", str(calc_id), "update", None, None, None)
+                    clear_state(chat_id)
+                    send_message(chat_id, f"Обновлено: начислено {accrued}, получено {received}", build_settings_keyboard())
+                except ValueError:
+                    send_message(chat_id, "Введите два числа через пробел.", build_cancel_keyboard())
+            else:
+                send_message(chat_id, "Введите: начислено получено", build_cancel_keyboard())
             return
         if scenario == "confirm_large_expense":
             _fsm_confirm_large(chat_id, session, state, trimmed)
@@ -454,6 +618,84 @@ def _fsm_edit_expense(chat_id, session, state, trimmed):
             send_message(chat_id, "Ошибка обновления.", build_main_menu_keyboard())
 
 
+def _show_finance_edit_field_select(chat_id, session, fid, entry):
+    set_state(chat_id, "finance_edit", "field_select", {"finance_id": fid, "back_data": "cmd_history"})
+    txt = f"Редактирование: {entry.date} {entry.category} {entry.amount} руб."
+    send_message(chat_id, txt, build_finance_edit_field_keyboard(fid))
+
+
+def _fsm_finance_edit(chat_id, session, state, trimmed):
+    step = state.get("step", "")
+    fid = state["payload"].get("finance_id", "")
+    field = state["payload"].get("field", "")
+    if step != "value" or not fid or not field:
+        return
+    entry = get_finance_by_id(session, fid)
+    if not entry:
+        clear_state(chat_id)
+        send_message(chat_id, "Запись не найдена.", build_main_menu_keyboard())
+        return
+    if field == "amount":
+        try:
+            amt = float(trimmed.replace(" ", "").replace(",", "."))
+        except ValueError:
+            send_message(chat_id, "Введите число:", build_cancel_keyboard())
+            return
+        if amt > 0:
+            old_v = str(entry.amount)
+            if update_finance_entry(session, fid, amount=amt):
+                log_audit(session, chat_id, "finance", fid, "update", "amount", old_v, str(amt))
+                clear_state(chat_id)
+                send_message(chat_id, f"Сумма обновлена: {amt} руб.", build_main_menu_keyboard())
+        else:
+            send_message(chat_id, "Введите положительное число:", build_cancel_keyboard())
+        return
+    if field == "date":
+        date_val = trimmed.strip()[:10]
+        if len(date_val) >= 8 and date_val.replace("-", "").replace(".", "").isdigit():
+            old_v = str(entry.date)
+            if update_finance_entry(session, fid, date=date_val):
+                log_audit(session, chat_id, "finance", fid, "update", "date", old_v, date_val)
+                clear_state(chat_id)
+                send_message(chat_id, f"Дата обновлена: {date_val}", build_main_menu_keyboard())
+        else:
+            send_message(chat_id, "Формат: YYYY-MM-DD", build_cancel_keyboard())
+        return
+    if field == "category":
+        cat = trimmed.strip() if trimmed.strip() in EXPENSE_CATEGORIES else None
+        if cat:
+            old_v = str(entry.category or "")
+            if update_finance_entry(session, fid, category=cat):
+                log_audit(session, chat_id, "finance", fid, "update", "category", old_v, cat)
+                clear_state(chat_id)
+                send_message(chat_id, f"Категория: {cat}", build_main_menu_keyboard())
+        else:
+            send_message(chat_id, "Выберите категорию из списка.", build_expense_categories_keyboard())
+        return
+    if field == "comment":
+        old_v = str(entry.comment or "")
+        new_v = trimmed.strip() if trimmed else ""
+        if update_finance_entry(session, fid, comment=new_v):
+            log_audit(session, chat_id, "finance", fid, "update", "comment", old_v, new_v)
+            clear_state(chat_id)
+            send_message(chat_id, "Комментарий обновлён.", build_main_menu_keyboard())
+        return
+
+
+def _fsm_finance_soft_delete_confirm(chat_id, session, state, trimmed):
+    if trimmed.strip().upper() != "ДА":
+        send_message(chat_id, "Напишите ДА для подтверждения удаления или отмените.", build_cancel_keyboard())
+        return
+    fid = state["payload"].get("finance_id", "")
+    if soft_delete_finance_entry(session, fid):
+        log_audit(session, chat_id, "finance", fid, "soft_delete", None, None, None)
+        clear_state(chat_id)
+        send_message(chat_id, "Запись удалена (скрыта из отчётов).", build_main_menu_keyboard())
+    else:
+        clear_state(chat_id)
+        send_message(chat_id, "Ошибка удаления.", build_main_menu_keyboard())
+
+
 def _fsm_budget_set_amount(chat_id, session, state, trimmed):
     try:
         amt = float(trimmed.replace(" ", "").replace(",", "."))
@@ -467,6 +709,26 @@ def _fsm_budget_set_amount(chat_id, session, state, trimmed):
         send_message(chat_id, f"Лимит {cat}: {amt} руб. на {month_year}", build_main_menu_keyboard())
         return
     send_message(chat_id, "Введите число (лимит по категории):", build_cancel_keyboard())
+
+
+def _fsm_budget_bulk(chat_id, session, state, trimmed):
+    month_year = state["payload"].get("month_year", calc_today()[:7])
+    count = 0
+    for line in trimmed.strip().split("\n"):
+        line = line.strip()
+        if ":" in line:
+            cat, amt_str = line.split(":", 1)
+            cat = cat.strip()
+            try:
+                amt = float(amt_str.replace(" ", "").replace(",", "."))
+            except ValueError:
+                continue
+            if cat in EXPENSE_CATEGORIES and amt >= 0:
+                set_budget_plan_limit(session, month_year, cat, amt)
+                log_audit(session, chat_id, "budget", month_year, "update", cat, None, str(amt))
+                count += 1
+    clear_state(chat_id)
+    send_message(chat_id, f"Задано лимитов: {count}", build_main_menu_keyboard())
 
 
 def _fsm_goals_add(chat_id, session, state, trimmed):
@@ -548,6 +810,137 @@ def _fsm_subs_add(chat_id, session, state, trimmed):
             send_message(chat_id, "Подписка добавлена.", build_main_menu_keyboard())
         else:
             send_message(chat_id, "Неверный формат даты. Используйте YYYY-MM-DD.", build_cancel_keyboard())
+
+
+def _fsm_subs_edit(chat_id, session, state, trimmed):
+    step = state.get("step", "")
+    sub_id = state["payload"].get("sub_id", "")
+    field = state["payload"].get("field", "")
+    s = get_subscription(session, sub_id)
+    if not s:
+        clear_state(chat_id)
+        send_message(chat_id, "Подписка не найдена.", build_main_menu_keyboard())
+        return
+    if step != "value" or not field:
+        return
+    if field == "name":
+        new_val = trimmed.strip()
+        if new_val:
+            old_v = str(s.name)
+            if update_subscription(session, sub_id, name=new_val):
+                log_audit(session, chat_id, "subscription", sub_id, "update", "name", old_v, new_val)
+            clear_state(chat_id)
+            send_message(chat_id, f"Название: {new_val}", build_main_menu_keyboard())
+        else:
+            send_message(chat_id, "Введите название.", build_cancel_keyboard())
+        return
+    if field == "amount":
+        try:
+            amt = float(trimmed.replace(" ", "").replace(",", "."))
+        except ValueError:
+            send_message(chat_id, "Введите число:", build_cancel_keyboard())
+            return
+        if amt > 0:
+            old_v = str(s.amount)
+            if update_subscription(session, sub_id, amount=amt):
+                log_audit(session, chat_id, "subscription", sub_id, "update", "amount", old_v, str(amt))
+            clear_state(chat_id)
+            send_message(chat_id, f"Сумма: {amt} руб.", build_main_menu_keyboard())
+        else:
+            send_message(chat_id, "Введите положительное число.", build_cancel_keyboard())
+        return
+    if field == "next_date":
+        date_val = trimmed.strip()[:10] if trimmed.strip() else ""
+        if len(date_val) >= 8 and date_val.replace("-", "").replace(".", "").isdigit():
+            old_v = str(s.next_date or "")
+            if update_subscription(session, sub_id, next_date=date_val):
+                log_audit(session, chat_id, "subscription", sub_id, "update", "next_date", old_v, date_val)
+            clear_state(chat_id)
+            send_message(chat_id, f"Дата: {date_val}", build_main_menu_keyboard())
+        else:
+            send_message(chat_id, "Формат: YYYY-MM-DD", build_cancel_keyboard())
+        return
+    if field == "remind_days_before":
+        try:
+            days = int(float(trimmed.replace(" ", "").replace(",", ".")))
+        except ValueError:
+            send_message(chat_id, "Введите число:", build_cancel_keyboard())
+            return
+        if days >= 0:
+            old_v = str(s.remind_days_before or 0)
+            if update_subscription(session, sub_id, remind_days_before=days):
+                log_audit(session, chat_id, "subscription", sub_id, "update", "remind_days_before", old_v, str(days))
+            clear_state(chat_id)
+            send_message(chat_id, f"Напоминание за {days} дн.", build_main_menu_keyboard())
+        else:
+            send_message(chat_id, "Введите неотрицательное число.", build_cancel_keyboard())
+        return
+
+
+def _fsm_worklog_edit(chat_id, session, state, trimmed):
+    wl_id = state["payload"].get("wl_id", "")
+    w = get_work_log(session, wl_id)
+    if not w:
+        clear_state(chat_id)
+        send_message(chat_id, "Запись не найдена.", build_main_menu_keyboard())
+        return
+    parts = trimmed.strip().split()
+    hrs_str = parts[0] if parts else "0"
+    status = "Work"
+    if len(parts) >= 2:
+        st_lower = parts[1].lower()
+        if "sick" in st_lower or "боль" in st_lower:
+            status = STATUS_SICK
+        elif "weekend" in st_lower or "выход" in st_lower:
+            status = STATUS_WEEKEND_WORK
+        else:
+            status = STATUS_WORK
+    try:
+        hours = float(hrs_str.replace(",", "."))
+    except ValueError:
+        send_message(chat_id, "Введите: часы [статус]. Пример: 6 Work", build_cancel_keyboard())
+        return
+    if hours < 0 or hours > 24:
+        send_message(chat_id, "Часы: 0–24.", build_cancel_keyboard())
+        return
+    old_h = str(w.hours_worked)
+    old_s = str(w.status)
+    if update_work_log(session, wl_id, hours_worked=hours, status=status):
+        log_audit(session, chat_id, "worklog", wl_id, "update", "hours_worked", old_h, str(hours))
+        log_audit(session, chat_id, "worklog", wl_id, "update", "status", old_s, status)
+    clear_state(chat_id)
+    send_message(chat_id, f"Обновлено: {hours}ч {status}", build_main_menu_keyboard())
+
+
+def _fsm_order_edit(chat_id, session, state, trimmed):
+    order_id = state["payload"].get("order_id", "")
+    o = get_order(session, order_id)
+    if not o:
+        clear_state(chat_id)
+        send_message(chat_id, "Заказ не найден.", build_main_menu_keyboard())
+        return
+    parts = trimmed.strip().split()
+    if len(parts) < 3:
+        send_message(chat_id, "Введите: дата описание сумма. Пример: 2024-03-15 Доставка 1500", build_cancel_keyboard())
+        return
+    date_val = parts[0]
+    if len(date_val) >= 10 and date_val[4] == "-" and date_val[7] == "-":
+        try:
+            amt = float(parts[-1].replace(",", "."))
+        except ValueError:
+            send_message(chat_id, "Сумма должна быть числом.", build_cancel_keyboard())
+            return
+        desc = " ".join(parts[1:-1])
+        old_d = str(o.date)
+        old_desc = str(o.description or "")
+        old_a = str(o.amount)
+        if update_order(session, order_id, date=date_val, description=desc, amount=amt):
+            log_audit(session, chat_id, "order", order_id, "update", "date", old_d, date_val)
+            log_audit(session, chat_id, "order", order_id, "update", "amount", old_a, str(amt))
+        clear_state(chat_id)
+        send_message(chat_id, f"Заказ обновлён: {date_val} {desc} {int(amt)} руб.", build_second_job_keyboard())
+    else:
+        send_message(chat_id, "Формат даты: YYYY-MM-DD", build_cancel_keyboard())
 
 
 def _fsm_debts_add(chat_id, session, state, trimmed):
@@ -649,6 +1042,323 @@ def _fsm_debt_pay(chat_id, session, state, trimmed):
         clear_state(chat_id)
 
 
+def _fsm_debt_edit(chat_id, session, state, trimmed):
+    step = state.get("step", "")
+    debt_id = state["payload"].get("debt_id", "")
+    field = state["payload"].get("field", "")
+    debt = get_debt(session, debt_id)
+    if not debt:
+        clear_state(chat_id)
+        send_message(chat_id, "Долг не найден.", build_main_menu_keyboard())
+        return
+    if step != "value" or not field:
+        return
+    if field == "counterparty":
+        new_val = trimmed.strip()
+        if new_val:
+            old_v = str(debt.counterparty)
+            if update_debt(session, debt_id, counterparty=new_val):
+                log_audit(session, chat_id, "debt", debt_id, "update", "counterparty", old_v, new_val)
+            clear_state(chat_id)
+            send_message(chat_id, f"Контрагент: {new_val}", build_main_menu_keyboard())
+        else:
+            send_message(chat_id, "Введите название контрагента.", build_cancel_keyboard())
+        return
+    if field == "original_amount":
+        try:
+            amt = float(trimmed.replace(" ", "").replace(",", "."))
+        except ValueError:
+            send_message(chat_id, "Введите число:", build_cancel_keyboard())
+            return
+        if amt > 0:
+            old_v = str(debt.original_amount)
+            if update_debt(session, debt_id, original_amount=amt):
+                log_audit(session, chat_id, "debt", debt_id, "update", "original_amount", old_v, str(amt))
+            clear_state(chat_id)
+            send_message(chat_id, f"Сумма: {amt} руб.", build_main_menu_keyboard())
+        else:
+            send_message(chat_id, "Введите положительное число.", build_cancel_keyboard())
+        return
+    if field == "interest_rate":
+        try:
+            rate = float(trimmed.replace(" ", "").replace(",", "."))
+        except ValueError:
+            send_message(chat_id, "Введите число:", build_cancel_keyboard())
+            return
+        if rate >= 0:
+            old_v = str(debt.interest_rate or 0)
+            if update_debt(session, debt_id, interest_rate=rate):
+                log_audit(session, chat_id, "debt", debt_id, "update", "interest_rate", old_v, str(rate))
+            clear_state(chat_id)
+            send_message(chat_id, f"Ставка: {rate}%", build_main_menu_keyboard())
+        else:
+            send_message(chat_id, "Введите неотрицательное число.", build_cancel_keyboard())
+        return
+    if field == "monthly_payment":
+        try:
+            amt = float(trimmed.replace(" ", "").replace(",", "."))
+        except ValueError:
+            send_message(chat_id, "Введите число:", build_cancel_keyboard())
+            return
+        if amt >= 0:
+            old_v = str(debt.monthly_payment or 0)
+            if update_debt(session, debt_id, monthly_payment=amt):
+                log_audit(session, chat_id, "debt", debt_id, "update", "monthly_payment", old_v, str(amt))
+            clear_state(chat_id)
+            send_message(chat_id, f"Платёж: {amt} руб.", build_main_menu_keyboard())
+        else:
+            send_message(chat_id, "Введите неотрицательное число.", build_cancel_keyboard())
+        return
+    if field == "next_payment_date":
+        date_val = trimmed.strip()[:10] if trimmed.strip() else ""
+        if not date_val or (len(date_val) >= 8 and date_val.replace("-", "").replace(".", "").isdigit()):
+            old_v = str(debt.next_payment_date or "")
+            if update_debt(session, debt_id, next_payment_date=date_val or None):
+                log_audit(session, chat_id, "debt", debt_id, "update", "next_payment_date", old_v, date_val or "None")
+            clear_state(chat_id)
+            send_message(chat_id, f"Дата: {date_val or 'сброшена'}", build_main_menu_keyboard())
+        else:
+            send_message(chat_id, "Формат: YYYY-MM-DD или пусто", build_cancel_keyboard())
+        return
+    if field == "due_date":
+        date_val = trimmed.strip()[:10] if trimmed.strip() else ""
+        if not date_val or (len(date_val) >= 8 and date_val.replace("-", "").replace(".", "").isdigit()):
+            old_v = str(debt.due_date or "")
+            if update_debt(session, debt_id, due_date=date_val or ""):
+                log_audit(session, chat_id, "debt", debt_id, "update", "due_date", old_v, date_val or "")
+            clear_state(chat_id)
+            send_message(chat_id, f"Срок: {date_val or 'сброшен'}", build_main_menu_keyboard())
+        else:
+            send_message(chat_id, "Формат: YYYY-MM-DD или пусто", build_cancel_keyboard())
+        return
+
+
+def _fsm_debt_remaining_comment(chat_id, session, state, trimmed):
+    debt_id = state["payload"].get("debt_id", "")
+    raw = trimmed.strip()
+    if not raw:
+        send_message(chat_id, "Введите: сумма и комментарий. Пример: 50000 коррекция по договору", build_cancel_keyboard())
+        return
+    parts = raw.split(None, 1)
+    amt_str = parts[0]
+    comm = parts[1] if len(parts) > 1 else "вручную"
+    try:
+        new_remaining = float(amt_str.replace(",", "."))
+    except ValueError:
+        send_message(chat_id, "Формат: <сумма> [комментарий]. Пример: 50000 коррекция", build_cancel_keyboard())
+        return
+    if new_remaining < 0:
+        send_message(chat_id, "Остаток не может быть отрицательным.", build_cancel_keyboard())
+        return
+    debt = get_debt(session, debt_id)
+    if not debt:
+        clear_state(chat_id)
+        send_message(chat_id, "Долг не найден.", build_main_menu_keyboard())
+        return
+    old_v = str(debt.remaining_amount)
+    if update_debt_remaining_with_comment(session, debt_id, new_remaining, comm):
+        log_audit(session, chat_id, "debt", debt_id, "update", "remaining_amount", old_v, str(new_remaining))
+        clear_state(chat_id)
+        send_message(chat_id, f"Остаток: {new_remaining} руб. ({comm})", build_main_menu_keyboard())
+    else:
+        clear_state(chat_id)
+        send_message(chat_id, "Ошибка обновления.", build_main_menu_keyboard())
+
+
+def _fsm_debt_pay_add(chat_id, session, state, trimmed):
+    step = state.get("step", "")
+    debt_id = state["payload"].get("debt_id", "")
+    if step == "amount":
+        parts = trimmed.strip().split()
+        amt_str = parts[0] if parts else ""
+        date_str = parts[1][:10] if len(parts) > 1 else calc_today()
+        try:
+            amt = float(amt_str.replace(",", "."))
+        except ValueError:
+            send_message(chat_id, "Введите: сумма [дата]. Пример: 5000 2024-03-01", build_cancel_keyboard())
+            return
+        if amt > 0:
+            if len(parts) > 1 and len(parts[1]) >= 8:
+                date_str = parts[1][:10]
+            else:
+                date_str = calc_today()
+            pid = add_debt_payment(session, debt_id, amt, date=date_str)
+            if pid:
+                log_audit(session, chat_id, "debt", debt_id, "create", "payment", None, f"{amt} {date_str}")
+                debt = get_debt(session, debt_id)
+                payments = get_debt_payments(session, debt_id)
+                send_message(chat_id, f"Платёж {int(amt)} руб. ({date_str}) добавлен. Остаток: {int(debt.remaining_amount) if debt else 0}", build_debt_history_keyboard(debt_id, payments))
+            else:
+                send_message(chat_id, "Ошибка добавления.", build_cancel_keyboard())
+            clear_state(chat_id)
+        else:
+            send_message(chat_id, "Введите положительную сумму.", build_cancel_keyboard())
+        return
+
+
+def _fsm_debt_payment_edit(chat_id, session, state, trimmed):
+    step = state.get("step", "")
+    pid = state["payload"].get("payment_id", "")
+    if step == "amount":
+        parts = trimmed.strip().split()
+        amt_str = parts[0] if parts else ""
+        date_str = parts[1][:10] if len(parts) > 1 else None
+        try:
+            amt = float(amt_str.replace(",", "."))
+        except ValueError:
+            send_message(chat_id, "Введите: сумма [дата]. Пример: 5000 2024-03-01", build_cancel_keyboard())
+            return
+        if amt > 0:
+            p = get_debt_payment(session, pid)
+            if not p:
+                clear_state(chat_id)
+                send_message(chat_id, "Платёж не найден.", build_main_menu_keyboard())
+                return
+            kw = {"amount": amt}
+            if len(parts) > 1 and len(parts[1]) >= 8:
+                kw["date"] = parts[1][:10]
+            if update_debt_payment(session, pid, **kw):
+                log_audit(session, chat_id, "debt", p.debt_id, "update", "payment", str(p.amount), str(amt))
+            debt_id = p.debt_id
+            payments = get_debt_payments(session, debt_id)
+            clear_state(chat_id)
+            send_message(chat_id, f"Платёж обновлён. Остаток пересчитан.", build_debt_history_keyboard(debt_id, payments))
+        else:
+            send_message(chat_id, "Введите положительную сумму.", build_cancel_keyboard())
+        return
+
+
+def _fsm_goal_edit(chat_id, session, state, trimmed):
+    step = state.get("step", "")
+    gid = state["payload"].get("goal_id", "")
+    field = state["payload"].get("field", "")
+    g = get_goal(session, gid)
+    if not g:
+        clear_state(chat_id)
+        send_message(chat_id, "Цель не найдена.", build_main_menu_keyboard())
+        return
+    if step != "value" or not field:
+        return
+    if field == "name":
+        new_val = trimmed.strip()
+        if new_val:
+            old_v = str(g.name)
+            if update_goal(session, gid, name=new_val):
+                log_audit(session, chat_id, "goal", gid, "update", "name", old_v, new_val)
+            clear_state(chat_id)
+            send_message(chat_id, f"Название: {new_val}", build_main_menu_keyboard())
+        else:
+            send_message(chat_id, "Введите название.", build_cancel_keyboard())
+        return
+    if field == "target_amount":
+        try:
+            amt = float(trimmed.replace(" ", "").replace(",", "."))
+        except ValueError:
+            send_message(chat_id, "Введите число:", build_cancel_keyboard())
+            return
+        if amt > 0:
+            old_v = str(g.target_amount)
+            if update_goal(session, gid, target_amount=amt):
+                log_audit(session, chat_id, "goal", gid, "update", "target_amount", old_v, str(amt))
+            clear_state(chat_id)
+            send_message(chat_id, f"Цель: {amt} руб.", build_main_menu_keyboard())
+        else:
+            send_message(chat_id, "Введите положительное число.", build_cancel_keyboard())
+        return
+    if field == "current_amount":
+        try:
+            amt = float(trimmed.replace(" ", "").replace(",", "."))
+        except ValueError:
+            send_message(chat_id, "Введите число:", build_cancel_keyboard())
+            return
+        if amt >= 0:
+            old_v = str(g.current_amount or 0)
+            if update_goal(session, gid, current_amount=amt):
+                log_audit(session, chat_id, "goal", gid, "update", "current_amount", old_v, str(amt))
+            clear_state(chat_id)
+            send_message(chat_id, f"Текущее: {amt} руб.", build_main_menu_keyboard())
+        else:
+            send_message(chat_id, "Введите неотрицательное число.", build_cancel_keyboard())
+        return
+    if field == "deadline":
+        date_val = trimmed.strip()[:10] if trimmed.strip() else ""
+        if not date_val or (len(date_val) >= 8 and date_val.replace("-", "").replace(".", "").isdigit()):
+            old_v = str(g.deadline or "")
+            if update_goal(session, gid, deadline=date_val or ""):
+                log_audit(session, chat_id, "goal", gid, "update", "deadline", old_v, date_val or "")
+            clear_state(chat_id)
+            send_message(chat_id, f"Срок: {date_val or 'сброшен'}", build_main_menu_keyboard())
+        else:
+            send_message(chat_id, "Формат: YYYY-MM-DD или пусто", build_cancel_keyboard())
+        return
+    if field == "priority":
+        try:
+            pri = int(float(trimmed.replace(" ", "").replace(",", ".")))
+        except ValueError:
+            send_message(chat_id, "Введите число:", build_cancel_keyboard())
+            return
+        old_v = str(g.priority or 0)
+        if update_goal(session, gid, priority=pri):
+            log_audit(session, chat_id, "goal", gid, "update", "priority", old_v, str(pri))
+        clear_state(chat_id)
+        send_message(chat_id, f"Приоритет: {pri}", build_main_menu_keyboard())
+        return
+    if field == "auto_fund_percent":
+        try:
+            pct = float(trimmed.replace(" ", "").replace(",", "."))
+        except ValueError:
+            send_message(chat_id, "Введите число:", build_cancel_keyboard())
+            return
+        if pct >= 0:
+            old_v = str(g.auto_fund_percent or 0)
+            if update_goal(session, gid, auto_fund_percent=pct):
+                log_audit(session, chat_id, "goal", gid, "update", "auto_fund_percent", old_v, str(pct))
+            clear_state(chat_id)
+            send_message(chat_id, f"Авто %: {pct}", build_main_menu_keyboard())
+        else:
+            send_message(chat_id, "Введите неотрицательное число.", build_cancel_keyboard())
+        return
+    if field == "auto_fund_amount":
+        try:
+            amt = float(trimmed.replace(" ", "").replace(",", "."))
+        except ValueError:
+            send_message(chat_id, "Введите число:", build_cancel_keyboard())
+            return
+        if amt >= 0:
+            old_v = str(g.auto_fund_amount or 0)
+            if update_goal(session, gid, auto_fund_amount=amt):
+                log_audit(session, chat_id, "goal", gid, "update", "auto_fund_amount", old_v, str(amt))
+            clear_state(chat_id)
+            send_message(chat_id, f"Авто сумма: {amt}", build_main_menu_keyboard())
+        else:
+            send_message(chat_id, "Введите неотрицательное число.", build_cancel_keyboard())
+        return
+
+
+def _fsm_goal_transfer_amount(chat_id, session, state, trimmed):
+    try:
+        amt = float(trimmed.replace(" ", "").replace(",", "."))
+    except ValueError:
+        send_message(chat_id, "Введите число:", build_cancel_keyboard())
+        return
+    if amt <= 0:
+        send_message(chat_id, "Введите положительное число.", build_cancel_keyboard())
+        return
+    from_id = state["payload"].get("from_goal_id", "")
+    to_id = state["payload"].get("to_goal_id", "")
+    if transfer_between_goals(session, from_id, to_id, amt):
+        log_audit(session, chat_id, "goal", from_id, "update", "transfer", str(amt), to_id)
+        from_g = get_goal(session, from_id)
+        to_g = get_goal(session, to_id)
+        clear_state(chat_id)
+        msg = f"Перевод {int(amt)} руб. из «{from_g.name if from_g else ''}» в «{to_g.name if to_g else ''}»"
+        send_message(chat_id, msg, build_main_menu_keyboard())
+    else:
+        from_g = get_goal(session, from_id)
+        avail = from_g.current_amount if from_g else 0
+        send_message(chat_id, f"Ошибка: недостаточно средств (доступно {int(avail)} руб.)", build_cancel_keyboard())
+
+
 def _fsm_search(chat_id, session, state, trimmed):
     results = search_finance(session, trimmed, 10)
     if not results:
@@ -659,6 +1369,44 @@ def _fsm_search(chat_id, session, state, trimmed):
             lines.append(f"  {r.date} {r.type} {int(r.amount)} {r.category or ''} {r.comment or ''}")
         send_message(chat_id, "\n".join(lines), build_main_menu_keyboard())
     clear_state(chat_id)
+
+
+def _fsm_tpl_edit(chat_id, session, state, trimmed):
+    tpl_id = state["payload"].get("tpl_id", "")
+    field = state["payload"].get("field", "")
+    t = get_template(session, tpl_id)
+    if not t:
+        clear_state(chat_id)
+        send_message(chat_id, "Шаблон не найден.", build_main_menu_keyboard())
+        return
+    if field == "name":
+        new_val = trimmed.strip()
+        if new_val:
+            old_v = str(t.name)
+            if update_template(session, tpl_id, name=new_val):
+                log_audit(session, chat_id, "template", tpl_id, "update", "name", old_v, new_val)
+            clear_state(chat_id)
+            templates = get_templates(session)
+            send_message(chat_id, f"Название: {new_val}", build_templates_keyboard(templates))
+        else:
+            send_message(chat_id, "Введите название.", build_cancel_keyboard())
+        return
+    if field == "amount":
+        try:
+            amt = float(trimmed.replace(" ", "").replace(",", "."))
+        except ValueError:
+            send_message(chat_id, "Введите число:", build_cancel_keyboard())
+            return
+        if amt > 0:
+            old_v = str(t.amount)
+            if update_template(session, tpl_id, amount=amt):
+                log_audit(session, chat_id, "template", tpl_id, "update", "amount", old_v, str(amt))
+            clear_state(chat_id)
+            templates = get_templates(session)
+            send_message(chat_id, f"Сумма: {amt} руб.", build_templates_keyboard(templates))
+        else:
+            send_message(chat_id, "Введите положительное число.", build_cancel_keyboard())
+        return
 
 
 def _fsm_tpl_add(chat_id, session, state, trimmed):
@@ -698,6 +1446,18 @@ def _fsm_settings_quiet(chat_id, session, state, trimmed):
         except ValueError:
             pass
     send_message(chat_id, "Введите два числа (начало конец), например: 23 7", build_cancel_keyboard())
+
+
+def _fsm_config_edit(chat_id, session, state, trimmed):
+    param = state["payload"].get("param", "")
+    if not param:
+        clear_state(chat_id)
+        send_message(chat_id, "Ошибка.", build_settings_keyboard())
+        return
+    set_config_param(session, param, trimmed.strip())
+    log_audit(session, chat_id, "config", param, "update", None, None, trimmed.strip())
+    clear_state(chat_id)
+    send_message(chat_id, f"{param} = {trimmed.strip()}", build_settings_keyboard())
 
 
 def _fsm_settings_threshold(chat_id, session, state, trimmed):
@@ -868,6 +1628,9 @@ def _dispatch_callback(chat_id: int, data: str, session):
     if data == "cmd_help":
         handle_help(chat_id)
         return
+    if data == "help_edit":
+        _handle_help_edit(chat_id)
+        return
     if data == "cmd_budget":
         send_message(chat_id, "Бюджет: план и факт по категориям.", build_budget_keyboard())
         return
@@ -964,6 +1727,15 @@ def _dispatch_callback(chat_id: int, data: str, session):
     if data == "cmd_export":
         _handle_export(chat_id, session)
         return
+    if data == "cmd_back":
+        state = get_state(chat_id)
+        back_data = (state.get("payload") or {}).get("back_data") if state else None
+        clear_state(chat_id)
+        if back_data:
+            _dispatch_callback(chat_id, back_data, session)
+        else:
+            send_message(chat_id, "Главное меню.", build_main_menu_keyboard())
+        return
     if data == "cmd_cancel":
         clear_state(chat_id)
         send_message(chat_id, "Отменено. Выберите действие:", build_main_menu_keyboard())
@@ -990,6 +1762,37 @@ def _dispatch_callback(chat_id: int, data: str, session):
         add_work_log(session, calc_today(), JOB_MAIN, 0, STATUS_SICK, 0)
         send_message(chat_id, "Записан день больничного.")
         return
+    if data == "worklog_history":
+        send_message(chat_id, "За какой период?", build_worklog_period_keyboard())
+        return
+    if data.startswith("worklog_period_"):
+        period = data.replace("worklog_period_", "")
+        today = calc_today()
+        if period == "today":
+            start, end = today, today
+        elif period == "week":
+            from datetime import datetime, timedelta
+            dt = datetime.strptime(today[:10], "%Y-%m-%d")
+            start = (dt - timedelta(days=6)).strftime("%Y-%m-%d")
+            end = today
+        else:
+            start, end = today[:7] + "-01", today
+        entries = get_work_log_for_period(session, start, end, "Main")
+        if not entries:
+            send_message(chat_id, "Записей нет.", build_main_work_keyboard())
+        else:
+            lines = [f"Учёт за {start}–{end}:"]
+            for e in entries:
+                lines.append(f"  {e.date}: {e.hours_worked}ч {e.status}")
+            send_message(chat_id, "\n".join(lines), build_worklog_list_keyboard(entries))
+        return
+    if data.startswith("worklog_edit_"):
+        wl_id = data.replace("worklog_edit_", "")
+        w = get_work_log(session, wl_id)
+        if w:
+            set_state(chat_id, "worklog_edit", "value", {"wl_id": wl_id, "field": "combined"})
+            send_message(chat_id, f"Редактирование: {w.date} {w.hours_worked}ч {w.status}\nВведите: часы, статус (Work/Sick/WeekendWork). Пример: 6 Work", build_cancel_keyboard())
+        return
 
     # Second job
     if data == "second_add":
@@ -1002,6 +1805,45 @@ def _dispatch_callback(chat_id: int, data: str, session):
         return
     if data == "second_status":
         handle_second_job_status(chat_id, session)
+        return
+    if data == "orders_list":
+        send_message(chat_id, "За какой период?", build_orders_period_keyboard())
+        return
+    if data.startswith("orders_period_"):
+        period = data.replace("orders_period_", "")
+        today = calc_today()
+        from datetime import datetime, timedelta
+        if period == "yesterday":
+            start = end = (datetime.strptime(today[:10], "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+        elif period == "week":
+            dt = datetime.strptime(today[:10], "%Y-%m-%d")
+            start = (dt - timedelta(days=6)).strftime("%Y-%m-%d")
+            end = today
+        else:
+            start = today[:7] + "-01"
+            end = today
+        orders = get_orders_for_period(session, start, end)
+        if not orders:
+            send_message(chat_id, f"Заказов за {start}–{end} нет.", build_second_job_keyboard())
+        else:
+            total = sum(o.amount for o in orders)
+            lines = [f"Заказы за {start}–{end} (итого {int(total)} руб.):"]
+            for o in orders:
+                lines.append(f"  {o.date}: {o.description or ''} {int(o.amount)} руб.")
+            send_message(chat_id, "\n".join(lines), build_orders_list_keyboard(orders))
+        return
+    if data.startswith("order_edit_"):
+        oid = data.replace("order_edit_", "")
+        o = get_order(session, oid)
+        if o:
+            set_state(chat_id, "order_edit", "value", {"order_id": oid, "field": "combined"})
+            send_message(chat_id, f"Редактирование: {o.date} {o.description} {o.amount}\nВведите: дата, описание, сумма. Пример: 2024-03-15 Доставка 1500", build_cancel_keyboard())
+        return
+    if data.startswith("order_del_"):
+        oid = data.replace("order_del_", "")
+        if delete_order(session, oid):
+            log_audit(session, chat_id, "order", oid, "delete", None, None, None)
+        send_message(chat_id, "Заказ удалён.", build_second_job_keyboard())
         return
 
     if data in ("yes", "no"):
@@ -1035,6 +1877,11 @@ def _dispatch_callback(chat_id: int, data: str, session):
     if data == "budget_set":
         month_year = calc_today()[:7]
         send_message(chat_id, f"Категория для лимита ({month_year}):", build_budget_categories_keyboard(month_year))
+        return
+    if data == "budget_bulk":
+        month_year = calc_today()[:7]
+        set_state(chat_id, "budget_bulk", "0", {"month_year": month_year})
+        send_message(chat_id, f"Лимиты на {month_year}. Введите пары «категория: сумма», по одной на строку. Пример:\nЕда: 15000\nТранспорт: 5000", build_cancel_keyboard())
         return
     if data == "budget_status":
         _handle_budget_status(chat_id, session)
@@ -1090,11 +1937,103 @@ def _dispatch_callback(chat_id: int, data: str, session):
             lines.append(f"  {g.name}: {int(g.current_amount)}/{int(g.target_amount)}")
         send_message(chat_id, "\n".join(lines), build_goals_keyboard())
         return
+    if data.startswith("goal_detail_"):
+        gid = data.replace("goal_detail_", "")
+        g = get_goal(session, gid)
+        if g:
+            from services.goals import get_goal_icon
+            icon = get_goal_icon(getattr(g, "goal_type", "other") or "other")
+            pct = int(100 * g.current_amount / g.target_amount) if g.target_amount else 0
+            dl = f" до {g.deadline}" if g.deadline else ""
+            msg = f"{icon} {g.name}\n{int(g.current_amount)}/{int(g.target_amount)} ({pct}%){dl}"
+            send_message(chat_id, msg, build_goal_detail_keyboard(gid))
+        return
     if data.startswith("goal_fund_"):
         gid = data.replace("goal_fund_", "")
         if get_goal(session, gid):
             set_state(chat_id, "goals_fund_amount", "0", {"goal_id": gid})
             send_message(chat_id, "Сумма пополнения (руб):", build_cancel_keyboard())
+        return
+    if data.startswith("goal_edit_"):
+        rest = data.replace("goal_edit_", "")
+        if "_" in rest:
+            parts = rest.split("_", 1)
+            field, gid = parts[0], parts[1]
+            g = get_goal(session, gid)
+            if not g:
+                return
+            if field == "name":
+                set_state(chat_id, "goal_edit", "value", {"goal_id": gid, "field": "name"})
+                send_message(chat_id, f"Название (было: {g.name}):", build_cancel_keyboard())
+                return
+            if field == "target":
+                set_state(chat_id, "goal_edit", "value", {"goal_id": gid, "field": "target_amount"})
+                send_message(chat_id, f"Целевая сумма (было: {g.target_amount}):", build_cancel_keyboard())
+                return
+            if field == "current":
+                set_state(chat_id, "goal_edit", "value", {"goal_id": gid, "field": "current_amount"})
+                send_message(chat_id, f"Текущая сумма (было: {g.current_amount}):", build_cancel_keyboard())
+                return
+            if field == "deadline":
+                set_state(chat_id, "goal_edit", "value", {"goal_id": gid, "field": "deadline"})
+                send_message(chat_id, f"Срок YYYY-MM-DD (было: {g.deadline or '-'}):", build_cancel_keyboard())
+                return
+            if field == "priority":
+                set_state(chat_id, "goal_edit", "value", {"goal_id": gid, "field": "priority"})
+                send_message(chat_id, f"Приоритет (было: {g.priority or 0}):", build_cancel_keyboard())
+                return
+            if field == "type":
+                set_state(chat_id, "goal_edit", "type_select", {"goal_id": gid})
+                send_message(chat_id, "Тип цели:", build_goal_type_keyboard_for_edit(gid))
+                return
+            if field == "autopct":
+                set_state(chat_id, "goal_edit", "value", {"goal_id": gid, "field": "auto_fund_percent"})
+                send_message(chat_id, f"Авто % от дохода (было: {g.auto_fund_percent or 0}):", build_cancel_keyboard())
+                return
+            if field == "autoamt":
+                set_state(chat_id, "goal_edit", "value", {"goal_id": gid, "field": "auto_fund_amount"})
+                send_message(chat_id, f"Авто сумма (было: {g.auto_fund_amount or 0}):", build_cancel_keyboard())
+                return
+        else:
+            gid = data.replace("goal_edit_", "")
+            g = get_goal(session, gid)
+            if g:
+                set_state(chat_id, "goal_edit", "field_select", {"goal_id": gid, "back_data": f"goal_detail_{gid}"})
+                txt = f"Редактирование: {g.name}"
+                send_message(chat_id, txt, build_goal_edit_field_keyboard(gid))
+        return
+    if data.startswith("gtype_edit_"):
+        rest = data.replace("gtype_edit_", "")
+        parts = rest.rsplit("_", 1)
+        if len(parts) == 2:
+            gtype, gid = parts
+            gtype_map = {"vacation": "vacation", "tech": "tech", "cushion": "cushion", "purchase": "purchase", "other": "other"}
+            gt = gtype_map.get(gtype, "other")
+            if update_goal(session, gid, goal_type=gt):
+                log_audit(session, chat_id, "goal", gid, "update", "goal_type", None, gt)
+            g = get_goal(session, gid)
+            if g:
+                set_state(chat_id, "goal_edit", "field_select", {"goal_id": gid, "back_data": f"goal_detail_{gid}"})
+                send_message(chat_id, f"Тип: {gt}. Редактирование: {g.name}", build_goal_edit_field_keyboard(gid))
+        return
+    if data.startswith("goal_transfer_"):
+        if data.startswith("goal_transfer_to_"):
+            rest = data.replace("goal_transfer_to_", "")
+            parts = rest.split("_", 1)
+            if len(parts) == 2:
+                to_id, from_id = parts[0], parts[1]
+                set_state(chat_id, "goal_transfer_amount", "0", {"from_goal_id": from_id, "to_goal_id": to_id})
+                send_message(chat_id, "Сумма перевода (руб):", build_cancel_keyboard())
+        else:
+            from_id = data.replace("goal_transfer_", "")
+            g_from = get_goal(session, from_id)
+            if not g_from:
+                return
+            goals = [x for x in get_active_goals(session) if x.id != from_id]
+            if not goals:
+                send_message(chat_id, "Нет других целей для перевода.", build_goal_detail_keyboard(from_id))
+                return
+            send_message(chat_id, "Куда перевести?", build_goal_transfer_target_keyboard(goals, from_id))
         return
     if data.startswith("goal_archive_"):
         gid = data.replace("goal_archive_", "")
@@ -1195,12 +2134,110 @@ def _dispatch_callback(chat_id: int, data: str, session):
         debt_id = data.replace("debt_history_", "")
         payments = get_debt_payments(session, debt_id)
         if not payments:
-            send_message(chat_id, "Платежей нет.", build_debts_keyboard())
+            send_message(chat_id, "Платежей нет. Добавить платёж задним числом?", build_debt_history_keyboard(debt_id, []))
             return
-        lines = ["История платежей:"]
+        lines = ["История платежей (кнопки Редактировать/Удалить):"]
         for p in payments:
             lines.append(f"  {p.date}: {int(p.amount)} руб. {p.comment or ''}")
-        send_message(chat_id, "\n".join(lines), build_debts_keyboard())
+        send_message(chat_id, "\n".join(lines), build_debt_history_keyboard(debt_id, payments))
+        return
+    if data.startswith("debt_edit_"):
+        rest = data.replace("debt_edit_", "")
+        if "_" in rest:
+            parts = rest.split("_", 1)
+            field, debt_id = parts[0], parts[1]
+            debt = get_debt(session, debt_id)
+            if not debt:
+                return
+            if field == "counterparty":
+                set_state(chat_id, "debt_edit", "value", {"debt_id": debt_id, "field": "counterparty", "back_data": f"debt_detail_{debt_id}"})
+                send_message(chat_id, f"Контрагент (было: {debt.counterparty}):", build_cancel_keyboard())
+                return
+            if field == "amount":
+                set_state(chat_id, "debt_edit", "value", {"debt_id": debt_id, "field": "original_amount", "back_data": f"debt_detail_{debt_id}"})
+                send_message(chat_id, f"Исходная сумма (было: {debt.original_amount}):", build_cancel_keyboard())
+                return
+            if field == "remaining":
+                set_state(chat_id, "debt_remaining_comment", "0", {"debt_id": debt_id, "back_data": f"debt_detail_{debt_id}"})
+                send_message(chat_id, f"Новый остаток (сейчас {debt.remaining_amount}). Комментарий (обязательно):", build_cancel_keyboard())
+                return
+            if field == "rate":
+                set_state(chat_id, "debt_edit", "value", {"debt_id": debt_id, "field": "interest_rate", "back_data": f"debt_detail_{debt_id}"})
+                send_message(chat_id, f"Ставка % (было: {debt.interest_rate or 0}):", build_cancel_keyboard())
+                return
+            if field == "payment":
+                set_state(chat_id, "debt_edit", "value", {"debt_id": debt_id, "field": "monthly_payment", "back_data": f"debt_detail_{debt_id}"})
+                send_message(chat_id, f"Сумма платежа (было: {debt.monthly_payment or 0}):", build_cancel_keyboard())
+                return
+            if field == "cycle":
+                set_state(chat_id, "debt_edit", "cycle_select", {"debt_id": debt_id, "back_data": f"debt_detail_{debt_id}"})
+                send_message(chat_id, "Цикл платежей:", build_debt_cycle_edit_keyboard(debt_id))
+                return
+            if field == "next":
+                set_state(chat_id, "debt_edit", "value", {"debt_id": debt_id, "field": "next_payment_date", "back_data": f"debt_detail_{debt_id}"})
+                send_message(chat_id, f"Дата след. платежа (было: {debt.next_payment_date or '-'}):", build_cancel_keyboard())
+                return
+            if field == "due":
+                set_state(chat_id, "debt_edit", "value", {"debt_id": debt_id, "field": "due_date", "back_data": f"debt_detail_{debt_id}"})
+                send_message(chat_id, f"Срок (YYYY-MM-DD, было: {debt.due_date or '-'}):", build_cancel_keyboard())
+                return
+            if field == "kind":
+                set_state(chat_id, "debt_edit", "kind_select", {"debt_id": debt_id, "back_data": f"debt_detail_{debt_id}"})
+                send_message(chat_id, "Тип долга:", build_debt_kind_edit_keyboard(debt_id))
+                return
+        else:
+            debt_id = data.replace("debt_edit_", "")
+            debt = get_debt(session, debt_id)
+            if debt:
+                set_state(chat_id, "debt_edit", "field_select", {"debt_id": debt_id, "back_data": f"debt_detail_{debt_id}"})
+                txt = f"Редактирование: {debt.counterparty}, остаток {int(debt.remaining_amount)}"
+                send_message(chat_id, txt, build_debt_edit_field_keyboard(debt_id))
+        return
+    if data.startswith("debt_cycle_val_"):
+        rest = data.replace("debt_cycle_val_", "")
+        parts = rest.rsplit("_", 1)
+        if len(parts) == 2:
+            cycle, debt_id = parts
+            if update_debt(session, debt_id, payment_cycle=cycle):
+                log_audit(session, chat_id, "debt", debt_id, "update", "payment_cycle", None, cycle)
+            debt = get_debt(session, debt_id)
+            if debt:
+                set_state(chat_id, "debt_edit", "field_select", {"debt_id": debt_id, "back_data": f"debt_detail_{debt_id}"})
+                send_message(chat_id, f"Цикл: {cycle}. Редактирование: {debt.counterparty}", build_debt_edit_field_keyboard(debt_id))
+        return
+    if data.startswith("debt_kind_val_"):
+        rest = data.replace("debt_kind_val_", "")
+        parts = rest.rsplit("_", 1)
+        if len(parts) == 2:
+            kind, debt_id = parts
+            if update_debt(session, debt_id, debt_kind=kind):
+                log_audit(session, chat_id, "debt", debt_id, "update", "debt_kind", None, kind)
+            debt = get_debt(session, debt_id)
+            if debt:
+                set_state(chat_id, "debt_edit", "field_select", {"debt_id": debt_id, "back_data": f"debt_detail_{debt_id}"})
+                send_message(chat_id, f"Тип: {kind}. Редактирование: {debt.counterparty}", build_debt_edit_field_keyboard(debt_id))
+        return
+    if data.startswith("debt_pay_edit_"):
+        pid = data.replace("debt_pay_edit_", "")
+        p = get_debt_payment(session, pid)
+        if p:
+            set_state(chat_id, "debt_payment_edit", "amount", {"payment_id": pid, "debt_id": p.debt_id})
+            send_message(chat_id, f"Новая сумма (было {p.amount}), дата (было {p.date}):", build_cancel_keyboard())
+        return
+    if data.startswith("debt_pay_del_"):
+        pid = data.replace("debt_pay_del_", "")
+        p = get_debt_payment(session, pid)
+        if p:
+            if delete_debt_payment(session, pid):
+                log_audit(session, chat_id, "debt", p.debt_id, "update", "payment_deleted", str(p.amount), None)
+            debt = get_debt(session, p.debt_id)
+            payments = get_debt_payments(session, p.debt_id)
+            send_message(chat_id, "Платёж удалён. История:", build_debt_history_keyboard(p.debt_id, payments))
+        return
+    if data.startswith("debt_pay_add_"):
+        debt_id = data.replace("debt_pay_add_", "")
+        set_state(chat_id, "debt_pay_add", "amount", {"debt_id": debt_id})
+        send_message(chat_id, "Сумма платежа (руб), дата (YYYY-MM-DD или пусто = сегодня):", build_cancel_keyboard())
         return
 
     # Subscriptions
@@ -1211,15 +2248,119 @@ def _dispatch_callback(chat_id: int, data: str, session):
         set_state(chat_id, "subs_add", "name", {})
         send_message(chat_id, "Название подписки:", build_cancel_keyboard())
         return
+    if data == "subs_paused":
+        paused = get_inactive_subscriptions(session)
+        if not paused:
+            send_message(chat_id, "Приостановленных подписок нет.", build_subscriptions_keyboard())
+        else:
+            send_message(chat_id, "Приостановленные:", build_subs_select_keyboard(paused))
+        return
     if data == "subs_overdue":
         overdue = get_overdue_subscriptions(session)
         if not overdue:
             send_message(chat_id, "Просроченных подписок нет.", build_subscriptions_keyboard())
         else:
-            lines = ["Просроченные:"]
-            for s in overdue:
-                lines.append(f"  • {s.name}: {int(s.amount)} руб., дата была {s.next_date}")
-            send_message(chat_id, "\n".join(lines), build_subscriptions_keyboard())
+            send_message(chat_id, "Просроченные подписки:", build_subs_select_keyboard(overdue))
+        return
+    if data.startswith("subs_detail_"):
+        sub_id = data.replace("subs_detail_", "")
+        s = get_subscription(session, sub_id)
+        if s:
+            msg = f"{s.name}\n{int(s.amount)} руб. / {s.cycle}, след. {s.next_date}\nКатегория: {s.category or 'Прочее'}"
+            send_message(chat_id, msg, build_subs_detail_keyboard(sub_id, s.is_active))
+        return
+    if data.startswith("subs_pause_"):
+        sub_id = data.replace("subs_pause_", "")
+        if update_subscription(session, sub_id, is_active=False):
+            log_audit(session, chat_id, "subscription", sub_id, "update", "is_active", "True", "False")
+        s = get_subscription(session, sub_id)
+        if s:
+            send_message(chat_id, "Подписка приостановлена.", build_subs_detail_keyboard(sub_id, s.is_active))
+        return
+    if data.startswith("subs_resume_"):
+        sub_id = data.replace("subs_resume_", "")
+        if update_subscription(session, sub_id, is_active=True):
+            log_audit(session, chat_id, "subscription", sub_id, "update", "is_active", "False", "True")
+        s = get_subscription(session, sub_id)
+        if s:
+            send_message(chat_id, "Подписка возобновлена.", build_subs_detail_keyboard(sub_id, s.is_active))
+        return
+    if data.startswith("subs_delete_"):
+        sub_id = data.replace("subs_delete_", "")
+        set_state(chat_id, "subs_delete_confirm", "0", {"sub_id": sub_id})
+        send_message(chat_id, "Удалить подписку полностью? Напишите ДА для подтверждения.", build_cancel_keyboard())
+        return
+    if data.startswith("subs_edit_"):
+        rest = data.replace("subs_edit_", "")
+        if "_" in rest:
+            parts = rest.split("_", 1)
+            field, sub_id = parts[0], parts[1]
+            s = get_subscription(session, sub_id)
+            if not s:
+                return
+            if field == "name":
+                set_state(chat_id, "subs_edit", "value", {"sub_id": sub_id, "field": "name"})
+                send_message(chat_id, f"Название (было: {s.name}):", build_cancel_keyboard())
+                return
+            if field == "amount":
+                set_state(chat_id, "subs_edit", "value", {"sub_id": sub_id, "field": "amount"})
+                send_message(chat_id, f"Сумма (было: {s.amount}):", build_cancel_keyboard())
+                return
+            if field == "cycle":
+                set_state(chat_id, "subs_edit", "cycle_select", {"sub_id": sub_id})
+                send_message(chat_id, "Цикл:", build_subs_cycle_keyboard(sub_id))
+                return
+            if field == "next":
+                set_state(chat_id, "subs_edit", "value", {"sub_id": sub_id, "field": "next_date"})
+                send_message(chat_id, f"Дата след. списания (было: {s.next_date}):", build_cancel_keyboard())
+                return
+            if field == "cat":
+                set_state(chat_id, "subs_edit", "value", {"sub_id": sub_id, "field": "category"})
+                send_message(chat_id, f"Категория (было: {s.category or 'Прочее'}):", build_expense_categories_keyboard())
+                return
+            if field == "remind":
+                set_state(chat_id, "subs_edit", "value", {"sub_id": sub_id, "field": "remind_days_before"})
+                send_message(chat_id, f"Напомин. за дней (было: {s.remind_days_before or 1}):", build_cancel_keyboard())
+                return
+            if field == "auto":
+                new_val = not getattr(s, "auto_create_expense", False)
+                update_subscription(session, sub_id, auto_create_expense=new_val)
+                log_audit(session, chat_id, "subscription", sub_id, "update", "auto_create_expense", str(not new_val), str(new_val))
+                s = get_subscription(session, sub_id)
+                send_message(chat_id, f"Авто расход: {'да' if new_val else 'нет'}", build_subs_edit_field_keyboard(sub_id))
+                return
+            if field == "group":
+                set_state(chat_id, "subs_edit", "group_select", {"sub_id": sub_id})
+                send_message(chat_id, "Группа:", build_subs_group_keyboard(sub_id))
+                return
+        else:
+            sub_id = data.replace("subs_edit_", "")
+            s = get_subscription(session, sub_id)
+            if s:
+                set_state(chat_id, "subs_edit", "field_select", {"sub_id": sub_id, "back_data": f"subs_detail_{sub_id}"})
+                send_message(chat_id, f"Редактирование: {s.name}", build_subs_edit_field_keyboard(sub_id))
+        return
+    if data.startswith("subs_cycle_"):
+        rest = data.replace("subs_cycle_", "")
+        if "_" in rest:
+            cycle, sub_id = rest.rsplit("_", 1)
+            if cycle in ("monthly", "weekly", "yearly") and sub_id:
+                update_subscription(session, sub_id, cycle=cycle)
+                log_audit(session, chat_id, "subscription", sub_id, "update", "cycle", None, cycle)
+            s = get_subscription(session, sub_id)
+            if s:
+                send_message(chat_id, f"Цикл: {cycle}", build_subs_edit_field_keyboard(sub_id))
+        return
+    if data.startswith("subs_group_"):
+        rest = data.replace("subs_group_", "")
+        parts = rest.rsplit("_", 1)
+        if len(parts) == 2:
+            group, sub_id = parts[0], parts[1]
+            if update_subscription(session, sub_id, group=group):
+                log_audit(session, chat_id, "subscription", sub_id, "update", "group", None, group)
+            s = get_subscription(session, sub_id)
+            if s:
+                send_message(chat_id, f"Группа: {group}", build_subs_edit_field_keyboard(sub_id))
         return
 
     # Edit/delete
@@ -1244,13 +2385,72 @@ def _dispatch_callback(chat_id: int, data: str, session):
         fid = data.replace("edit_entry_", "")
         entry = get_finance_by_id(session, fid)
         if entry:
-            set_state(chat_id, "edit_expense", "amount", {"finance_id": fid, "prev_amount": entry.amount})
+            _show_finance_edit_field_select(chat_id, session, fid, entry)
+        return
+    if data.startswith("edit_fin_field_"):
+        rest = data.replace("edit_fin_field_", "")
+        parts = rest.rsplit("_", 1)
+        if len(parts) != 2:
+            return
+        field, fid = parts
+        entry = get_finance_by_id(session, fid)
+        if not entry:
+            return
+        if field == "excl":
+            new_val = not getattr(entry, "exclude_from_budget", False)
+            update_finance_entry(session, fid, exclude_from_budget=new_val)
+            log_audit(session, chat_id, "finance", fid, "update", "exclude_from_budget", str(not new_val), str(new_val))
+            entry = get_finance_by_id(session, fid)
+            set_state(chat_id, "finance_edit", "field_select", {"finance_id": fid, "back_data": "cmd_history"})
+            status = "Исключено из бюджета. " if new_val else "Учитывается в бюджете. "
+            txt = status + (f"Редактирование: {entry.date} {entry.category} {entry.amount} руб." if entry else "")
+            send_message(chat_id, txt, build_finance_edit_field_keyboard(fid))
+            return
+        if field == "amount":
+            set_state(chat_id, "finance_edit", "value", {"finance_id": fid, "field": "amount", "back_data": "cmd_history"})
             send_message(chat_id, f"Новая сумма (было {entry.amount}):", build_cancel_keyboard())
+            return
+        if field == "date":
+            set_state(chat_id, "finance_edit", "value", {"finance_id": fid, "field": "date", "back_data": "cmd_history"})
+            send_message(chat_id, f"Новая дата (было {entry.date}):", build_cancel_keyboard())
+            return
+        if field == "cat":
+            set_state(chat_id, "finance_edit", "value", {"finance_id": fid, "field": "category", "back_data": "cmd_history"})
+            send_message(chat_id, f"Новая категория (было {entry.category}):", build_expense_categories_keyboard())
+            return
+        if field == "comment":
+            set_state(chat_id, "finance_edit", "value", {"finance_id": fid, "field": "comment", "back_data": "cmd_history"})
+            send_message(chat_id, f"Новый комментарий (было: {entry.comment or '-'}):", build_cancel_keyboard())
+            return
+        if field == "type":
+            set_state(chat_id, "finance_edit", "type_select", {"finance_id": fid, "back_data": "cmd_history"})
+            send_message(chat_id, "Новый тип:", build_finance_type_keyboard(fid))
+            return
+        return
+    if data.startswith("edit_fin_type_"):
+        parts = data.replace("edit_fin_type_", "").rsplit("_", 1)
+        if len(parts) == 2:
+            ftype, fid = parts
+            update_finance_entry(session, fid, entry_type=ftype)
+            log_audit(session, chat_id, "finance", fid, "update", "type", None, ftype)
+            entry = get_finance_by_id(session, fid)
+            if entry:
+                _show_finance_edit_field_select(chat_id, session, fid, entry)
+        return
+    if data.startswith("edit_fin_soft_del_"):
+        fid = data.replace("edit_fin_soft_del_", "")
+        set_state(chat_id, "finance_soft_delete_confirm", "0", {"finance_id": fid})
+        send_message(chat_id, "Удалить запись (скрыть из отчётов)? Напишите ДА для подтверждения.", build_cancel_keyboard())
         return
 
     # Expense category selection
     if data.startswith("exp_cat_"):
-        idx = int(data.replace("exp_cat_", ""))
+        try:
+            idx = int(data.replace("exp_cat_", ""))
+        except ValueError:
+            return
+        if idx < 0 or idx >= len(EXPENSE_CATEGORIES):
+            return
         cat = EXPENSE_CATEGORIES[idx]
         s = get_state(chat_id)
         if s and s.get("scenario") == "expense_cat" and s.get("payload", {}).get("amount") is not None:
@@ -1260,6 +2460,33 @@ def _dispatch_callback(chat_id: int, data: str, session):
             add_template(session, s["payload"]["name"], s["payload"]["amount"], cat)
             clear_state(chat_id)
             send_message(chat_id, "Шаблон добавлен.", build_main_menu_keyboard())
+        elif s and s.get("scenario") == "finance_edit" and s.get("step") == "value" and s.get("payload", {}).get("field") == "category":
+            fid = s["payload"].get("finance_id", "")
+            entry = get_finance_by_id(session, fid)
+            if entry:
+                old_v = str(entry.category or "")
+                if update_finance_entry(session, fid, category=cat):
+                    log_audit(session, chat_id, "finance", fid, "update", "category", old_v, cat)
+                    clear_state(chat_id)
+                    send_message(chat_id, f"Категория: {cat}", build_main_menu_keyboard())
+        elif s and s.get("scenario") == "tpl_edit" and s.get("step") == "value" and s.get("payload", {}).get("field") == "category":
+            tpl_id = s["payload"].get("tpl_id", "")
+            t = get_template(session, tpl_id)
+            if t:
+                old_v = str(t.category or "")
+                if update_template(session, tpl_id, category=cat):
+                    log_audit(session, chat_id, "template", tpl_id, "update", "category", old_v, cat)
+                    clear_state(chat_id)
+                    send_message(chat_id, f"Категория: {cat}", build_main_menu_keyboard())
+        elif s and s.get("scenario") == "subs_edit" and s.get("step") == "value" and s.get("payload", {}).get("field") == "category":
+            sub_id = s["payload"].get("sub_id", "")
+            subs = get_subscription(session, sub_id)
+            if subs:
+                old_v = str(subs.category or "")
+                if update_subscription(session, sub_id, category=cat):
+                    log_audit(session, chat_id, "subscription", sub_id, "update", "category", old_v, cat)
+                    clear_state(chat_id)
+                    send_message(chat_id, f"Категория: {cat}", build_main_menu_keyboard())
         return
     if data == "exp_skip":
         s = get_state(chat_id)
@@ -1344,6 +2571,39 @@ def _dispatch_callback(chat_id: int, data: str, session):
         set_state(chat_id, "tpl_add", "name", {})
         send_message(chat_id, "Название шаблона:", build_cancel_keyboard())
         return
+    if data.startswith("tpl_edit_"):
+        rest = data.replace("tpl_edit_", "")
+        if "_" in rest:
+            field, tpl_id = rest.split("_", 1)
+            t = get_template(session, tpl_id)
+            if not t:
+                return
+            if field == "name":
+                set_state(chat_id, "tpl_edit", "value", {"tpl_id": tpl_id, "field": "name"})
+                send_message(chat_id, f"Название (было: {t.name}):", build_cancel_keyboard())
+                return
+            if field == "amount":
+                set_state(chat_id, "tpl_edit", "value", {"tpl_id": tpl_id, "field": "amount"})
+                send_message(chat_id, f"Сумма (было: {t.amount}):", build_cancel_keyboard())
+                return
+            if field == "cat":
+                set_state(chat_id, "tpl_edit", "value", {"tpl_id": tpl_id, "field": "category"})
+                send_message(chat_id, f"Категория (было: {t.category}):", build_expense_categories_keyboard())
+                return
+        else:
+            tpl_id = data.replace("tpl_edit_", "")
+            t = get_template(session, tpl_id)
+            if t:
+                set_state(chat_id, "tpl_edit", "field_select", {"tpl_id": tpl_id, "back_data": "cmd_templates"})
+                send_message(chat_id, f"Редактирование: {t.name} {int(t.amount)} руб.", build_tpl_edit_keyboard(tpl_id))
+        return
+    if data.startswith("tpl_del_"):
+        tpl_id = data.replace("tpl_del_", "")
+        if delete_template(session, tpl_id):
+            log_audit(session, chat_id, "template", tpl_id, "delete", None, None, None)
+        templates = get_templates(session)
+        send_message(chat_id, "Шаблон удалён.", build_templates_keyboard(templates))
+        return
     if data.startswith("tpl_use_"):
         tpl_id = data.replace("tpl_use_", "")
         tpl = use_template(session, tpl_id)
@@ -1368,6 +2628,110 @@ def _dispatch_callback(chat_id: int, data: str, session):
         set_state(chat_id, "settings_threshold", "0", {})
         current = get_config_param(session, "LargeExpenseThreshold") or "10000"
         send_message(chat_id, f"Текущий порог: {current} руб. Новый порог:", build_cancel_keyboard())
+        return
+    if data == "settings_config":
+        send_message(chat_id, "Параметры конфигурации:", build_config_params_keyboard())
+        return
+    if data == "settings_tags":
+        tags = get_tags(session)
+        if not tags:
+            send_message(chat_id, "Тегов нет. Добавьте тег:", build_tags_keyboard([]))
+        else:
+            send_message(chat_id, "Теги (переименовать/удалить):", build_tags_keyboard(tags))
+        return
+    if data == "tag_add":
+        set_state(chat_id, "tag_add", "0", {})
+        send_message(chat_id, "Название тега:", build_cancel_keyboard())
+        return
+    if data.startswith("tag_edit_"):
+        tag_id = data.replace("tag_edit_", "")
+        set_state(chat_id, "tag_rename", "0", {"tag_id": tag_id})
+        send_message(chat_id, "Новое название:", build_cancel_keyboard())
+        return
+    if data.startswith("tag_del_"):
+        tag_id = data.replace("tag_del_", "")
+        if delete_tag(session, tag_id):
+            log_audit(session, chat_id, "tag", tag_id, "delete", None, None, None)
+        tags = get_tags(session)
+        send_message(chat_id, "Тег удалён.", build_tags_keyboard(tags))
+        return
+    if data == "settings_achievements":
+        achievements = get_achievements(session)
+        if not achievements:
+            send_message(chat_id, "Достижений нет.", build_settings_keyboard())
+        else:
+            send_message(chat_id, "Достижения (сбросить = удалить для переразблокировки):", build_achievements_keyboard(achievements))
+        return
+    if data.startswith("ach_reset_"):
+        aid = int(data.replace("ach_reset_", ""))
+        if delete_achievement(session, aid):
+            log_audit(session, chat_id, "achievement", str(aid), "delete", None, None, None)
+        send_message(chat_id, "Достижение сброшено. Можно разблокировать заново.", build_settings_keyboard())
+        return
+    if data == "settings_calculations":
+        calcs = get_calculations(session)
+        if not calcs:
+            send_message(chat_id, "Записей о начисленной/полученной ЗП нет.", build_settings_keyboard())
+        else:
+            lines = ["Расчёты ЗП (начислено/получено):"]
+            for c in calcs[:5]:
+                lines.append(f"  {c.period_start}–{c.period_end}: нач. {int(c.accrued_salary or 0)}, пол. {int(c.received_salary or 0)}, разница {int(c.difference or 0)}")
+            send_message(chat_id, "\n".join(lines), build_calculations_keyboard(calcs))
+        return
+    if data.startswith("calc_edit_"):
+        cid = int(data.replace("calc_edit_", ""))
+        c = get_calculation(session, cid)
+        if c:
+            set_state(chat_id, "calc_edit", "0", {"calc_id": cid})
+            send_message(chat_id, f"Редактирование: {c.period_start}–{c.period_end}\nВведите: начислено получено (через пробел)", build_cancel_keyboard())
+        return
+    if data == "edit_menu":
+        send_message(chat_id, "Редактирование — выберите раздел:", build_edit_menu_keyboard())
+        return
+    if data == "finance_mass":
+        set_state(chat_id, "finance_mass", "period", {})
+        send_message(chat_id, "Выберите период:", build_mass_period_keyboard())
+        return
+    if data.startswith("mass_period_"):
+        period = data.replace("mass_period_", "")
+        from datetime import datetime, timedelta
+        today = calc_today()
+        if period == "week":
+            start = (datetime.strptime(today[:10], "%Y-%m-%d") - timedelta(days=6)).strftime("%Y-%m-%d")
+        else:
+            start = today[:7] + "-01"
+        set_state(chat_id, "finance_mass", "category", {"period": period, "start": start, "end": today})
+        send_message(chat_id, "Выберите категорию:", build_mass_category_keyboard())
+        return
+    if data.startswith("mass_cat_"):
+        state = get_state_db(session, chat_id)
+        if state and state.get("scenario") == "finance_mass":
+            cat_part = data.replace("mass_cat_", "")
+            if cat_part == "all":
+                cat = "all"
+            elif cat_part.isdigit() and 0 <= int(cat_part) < len(EXPENSE_CATEGORIES):
+                cat = EXPENSE_CATEGORIES[int(cat_part)]
+            else:
+                cat = "all"
+            set_state(chat_id, "finance_mass", "action", {**state.get("payload", {}), "category": cat})
+            send_message(chat_id, "Действие:", build_mass_action_keyboard())
+        return
+    if data.startswith("mass_action_"):
+        action = data.replace("mass_action_", "")
+        state = get_state_db(session, chat_id)
+        if state and state.get("scenario") == "finance_mass":
+            p = state.get("payload", {})
+            act_type = "soft_delete" if action == "delete" else "exclude_from_budget"
+            set_state(chat_id, "finance_mass_confirm", "0", {**p, "action": act_type})
+            act_txt = "удалить" if action == "delete" else "исключить из бюджета"
+            send_message(chat_id, f"Подтвердите: {act_txt} записи за {p.get('start','')}–{p.get('end','')} (категория: {p.get('category','все')}). Напишите ДА", build_cancel_keyboard())
+        return
+    if data.startswith("config_edit_"):
+        param = data.replace("config_edit_", "")
+        current = get_config_param(session, param) or ""
+        set_state(chat_id, "config_edit", "0", {"param": param})
+        param_label = next((l for p, l in CONFIG_PARAMS if p == param), param)
+        send_message(chat_id, f"{param_label} (текущее: {current}):", build_cancel_keyboard())
         return
     if data == "settings_delete_all":
         set_state(chat_id, "delete_all_confirm", "0", {})
@@ -1475,11 +2839,7 @@ def _handle_subs_list(chat_id, session):
     if not subs:
         send_message(chat_id, "Подписок нет.", build_subscriptions_keyboard())
         return
-    lines = ["Подписки:"]
-    for s in subs:
-        overdue = " (просрочена!)" if getattr(s, "is_overdue", False) else ""
-        lines.append(f"• {s.name}: {int(s.amount)} руб. / {s.cycle}, след. {s.next_date}{overdue}")
-    send_message(chat_id, "\n".join(lines), build_subscriptions_keyboard())
+    send_message(chat_id, "Выберите подписку:", build_subs_select_keyboard(subs))
 
 
 def _handle_analytics_chart(chat_id, session):
@@ -1589,7 +2949,31 @@ def handle_help(chat_id: int):
         "Настройки — тихие часы, пороги, экспорт\n"
         "/редактировать — изменить/удалить расход"
     )
-    send_message(chat_id, msg, build_main_menu_keyboard())
+    send_message(chat_id, msg, build_help_with_edit_keyboard())
+
+
+def build_help_with_edit_keyboard() -> dict:
+    return _inline_keyboard([
+        [_btn("Как редактировать", "help_edit")],
+        [_btn("Главное меню", "cmd_status")],
+    ])
+
+
+def _handle_help_edit(chat_id: int):
+    msg = (
+        "Как редактировать:\n\n"
+        "• Финансы — История → выберите запись → сумма, дата, категория, комментарий, удалить\n"
+        "• Долги — список → карточка → контрагент, сумма, ставка, платёж, дата, срок, остаток, платежи\n"
+        "• Цели — список → карточка → название, цель, текущее, срок, приоритет, авто-пополнение, перевод\n"
+        "• Подписки — список → карточка → название, сумма, дата, напоминание, пауза, удалить\n"
+        "• Бюджет — настройка лимитов → по категориям или массово\n"
+        "• WorkLog — за период → выберите запись\n"
+        "• Заказы — за период → выберите заказ\n"
+        "• Шаблоны — список → выберите шаблон\n"
+        "• Массовые операции — История → Массовые операции (удалить/исключить за период)\n"
+        "• Последний расход — /редактировать или «Редактировать последний»"
+    )
+    send_message(chat_id, msg, _inline_keyboard([[_btn("← Справка", "cmd_help")]]))
 
 
 def handle_status(chat_id: int, session):
@@ -1619,7 +3003,7 @@ def handle_second_job_status(chat_id: int, session):
     yesterday = calc_yesterday()
     orders = get_orders_for_period(session, yesterday, yesterday)
     total = sum(o.amount for o in orders)
-    send_message(chat_id, f"За вчера ({yesterday}): заказов {len(orders)}, сумма {int(total)} руб.")
+    send_message(chat_id, f"За вчера ({yesterday}): заказов {len(orders)}, сумма {int(total)} руб.", build_second_job_keyboard())
 
 
 def _handle_edit_last_menu(chat_id: int, session):
