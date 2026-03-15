@@ -101,6 +101,8 @@ from services.budget import (
     suggest_plan_from_history, get_forecast_end_of_month, get_5030_20_hint,
 )
 from bot.keyboards import (
+    _inline_keyboard,
+    _btn,
     build_main_menu_keyboard,
     build_main_work_keyboard,
     build_second_job_keyboard,
@@ -1654,7 +1656,6 @@ def _dispatch_callback(chat_id: int, data: str, session):
         if templates:
             send_message(chat_id, "Шаблоны расходов:", build_templates_keyboard(templates))
         else:
-            from bot.keyboards import _inline_keyboard, _btn
             send_message(chat_id, "Шаблонов нет.", _inline_keyboard([[_btn("Добавить шаблон", "tpl_add")], [_btn("Назад", "cmd_help")]]))
         return
     if data == "cmd_settings":
