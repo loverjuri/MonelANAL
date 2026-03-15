@@ -307,6 +307,12 @@ def handle_message(chat_id: int, text: str, message_id: int | None = None, messa
         if scenario == "worklog_edit":
             _fsm_worklog_edit(chat_id, session, state, trimmed)
             return
+        if scenario == "worklog_add_past":
+            _fsm_worklog_add_past(chat_id, session, state, trimmed)
+            return
+        if scenario == "orders_add_past":
+            _fsm_orders_add_past(chat_id, session, state, trimmed)
+            return
         if scenario == "order_edit":
             _fsm_order_edit(chat_id, session, state, trimmed)
             return
@@ -912,6 +918,108 @@ def _fsm_worklog_edit(chat_id, session, state, trimmed):
         log_audit(session, chat_id, "worklog", wl_id, "update", "status", old_s, status)
     clear_state(chat_id)
     send_message(chat_id, f"Обновлено: {hours}ч {status}", build_main_menu_keyboard())
+
+
+def _fsm_worklog_add_past(chat_id, session, state, trimmed):
+    """Parse dates (11-13, 11 12 13, or full YYYY-MM-DD) and add 8h Work for each."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("Europe/Moscow")
+    today = datetime.now(tz)
+    year_month = f"{today.year}-{today.month:02d}"
+    dates = []
+    parts = trimmed.strip().replace(",", " ").split()
+    for p in parts:
+        p = p.strip()
+        if "-" in p and len(p) <= 5:
+            try:
+                start_d, end_d = p.split("-", 1)
+                s, e = int(start_d), int(end_d)
+                for d in range(s, e + 1):
+                    dates.append(f"{year_month}-{d:02d}")
+            except ValueError:
+                pass
+            continue
+        if p.isdigit():
+            d = int(p)
+            if 1 <= d <= 31:
+                dates.append(f"{year_month}-{d:02d}")
+            continue
+        if len(p) == 10 and p[4] == "-" and p[7] == "-":
+            try:
+                datetime.strptime(p[:10], "%Y-%m-%d")
+                dates.append(p[:10])
+            except ValueError:
+                pass
+    dates = sorted(set(dates))
+    if not dates:
+        send_message(chat_id, "Не удалось распознать даты. Примеры: 11-13 или 11 12 13", build_cancel_keyboard())
+        return
+    norm = 8
+    try:
+        from services.calculations import _get_work_hours_norm
+        norm = _get_work_hours_norm(session)
+    except Exception:
+        pass
+    added = []
+    for date_str in dates:
+        hour_rate = calc_hour_rate_snapshot_for_date(date_str, session)
+        add_work_log(session, date_str, JOB_MAIN, norm, STATUS_WORK, hour_rate)
+        added.append(date_str)
+    clear_state(chat_id)
+    lines = [f"Записано {len(added)} дней по {norm} ч:"]
+    for d in added:
+        lines.append(f"  {d}")
+    send_message(chat_id, "\n".join(lines), build_main_work_keyboard())
+
+
+def _fsm_orders_add_past(chat_id, session, state, trimmed):
+    """Parse lines 'date desc amount' and add orders. Date: 11 or 2026-03-11."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("Europe/Moscow")
+    today = datetime.now(tz)
+    year_month = f"{today.year}-{today.month:02d}"
+    added = []
+    for line in trimmed.strip().split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split()
+        if len(parts) < 3:
+            continue
+        date_part = parts[0]
+        try:
+            amount = float(parts[-1].replace(",", ".").replace(" ", ""))
+        except ValueError:
+            continue
+        desc = " ".join(parts[1:-1]).strip()
+        if not desc:
+            desc = "Заказ"
+        if len(date_part) == 10 and date_part[4] == "-" and date_part[7] == "-":
+            try:
+                datetime.strptime(date_part[:10], "%Y-%m-%d")
+                date_str = date_part[:10]
+            except ValueError:
+                continue
+        elif date_part.isdigit():
+            d = int(date_part)
+            if 1 <= d <= 31:
+                date_str = f"{year_month}-{d:02d}"
+            else:
+                continue
+        else:
+            continue
+        add_order(session, date_str, desc, amount)
+        added.append((date_str, desc, amount))
+    if not added:
+        send_message(chat_id, "Не удалось распознать заказы. Формат: дата описание сумма (каждая строка — один заказ)", build_cancel_keyboard())
+        return
+    clear_state(chat_id)
+    lines = [f"Добавлено {len(added)} заказ(ов):"]
+    for d, desc, amt in added:
+        lines.append(f"  {d}: {desc} — {int(amt)} руб.")
+    send_message(chat_id, "\n".join(lines), build_second_job_keyboard())
 
 
 def _fsm_order_edit(chat_id, session, state, trimmed):
@@ -1766,6 +1874,10 @@ def _dispatch_callback(chat_id: int, data: str, session):
     if data == "worklog_history":
         send_message(chat_id, "За какой период?", build_worklog_period_keyboard())
         return
+    if data == "worklog_add_past":
+        set_state(chat_id, "worklog_add_past", "dates", {})
+        send_message(chat_id, "Введите даты полной отработки (8 ч). Форматы:\n• 11-13 — дни текущего месяца\n• 11 12 13 — перечисление\n• 2026-03-11 2026-03-12 — полные даты", build_cancel_keyboard())
+        return
     if data.startswith("worklog_period_"):
         period = data.replace("worklog_period_", "")
         today = calc_today()
@@ -1809,6 +1921,10 @@ def _dispatch_callback(chat_id: int, data: str, session):
         return
     if data == "orders_list":
         send_message(chat_id, "За какой период?", build_orders_period_keyboard())
+        return
+    if data == "orders_add_past":
+        set_state(chat_id, "orders_add_past", "orders", {})
+        send_message(chat_id, "Введите заказы. Каждая строка: дата описание сумма.\nПримеры:\n• 11 Доставка 1500\n• 12 Ремонт 3000\n• 2026-03-13 Консультация 500", build_cancel_keyboard())
         return
     if data.startswith("orders_period_"):
         period = data.replace("orders_period_", "")
@@ -2211,12 +2327,19 @@ def _dispatch_callback(chat_id: int, data: str, session):
         parts = rest.rsplit("_", 1)
         if len(parts) == 2:
             kind, debt_id = parts
-            if update_debt(session, debt_id, debt_kind=kind):
-                log_audit(session, chat_id, "debt", debt_id, "update", "debt_kind", None, kind)
             debt = get_debt(session, debt_id)
             if debt:
+                kind_labels = {"credit": "Кредит", "installment": "Рассрочка", "card": "Кредитная карта", "overdraft": "Овердрафт"}
+                label = kind_labels.get(kind, kind)
+                changed = (debt.debt_kind or "credit") != kind
+                if update_debt(session, debt_id, debt_kind=kind):
+                    log_audit(session, chat_id, "debt", debt_id, "update", "debt_kind", None, kind)
+                debt = get_debt(session, debt_id)
                 set_state(chat_id, "debt_edit", "field_select", {"debt_id": debt_id, "back_data": f"debt_detail_{debt_id}"})
-                send_message(chat_id, f"Тип: {kind}. Редактирование: {debt.counterparty}", build_debt_edit_field_keyboard(debt_id))
+                if changed:
+                    send_message(chat_id, f"Тип: {label}. Редактирование: {debt.counterparty}", build_debt_edit_field_keyboard(debt_id))
+                else:
+                    send_message(chat_id, f"Тип без изменений: {label}. Редактирование: {debt.counterparty}", build_debt_edit_field_keyboard(debt_id))
         return
     if data.startswith("debt_pay_edit_"):
         pid = data.replace("debt_pay_edit_", "")

@@ -32,7 +32,7 @@ def build_main_work_keyboard() -> dict:
             _btn("Выходной (работал)", "main_weekend"),
         ],
         [_btn("Больничный", "main_sick")],
-        [_btn("История учёта", "worklog_history")],
+        [_btn("История учёта", "worklog_history"), _btn("Записать за дату", "worklog_add_past")],
     ])
 
 
@@ -43,7 +43,7 @@ def build_second_job_keyboard() -> dict:
             _btn("Нет доходов", "second_none"),
             _btn("Посмотреть статус", "second_status"),
         ],
-        [_btn("Заказы за период", "orders_list")],
+        [_btn("Заказы за период", "orders_list"), _btn("Добавить за дату", "orders_add_past")],
     ])
 
 
@@ -124,6 +124,7 @@ def build_worklog_period_keyboard() -> dict:
     return _inline_keyboard([
         [_btn("Сегодня", "worklog_period_today"), _btn("Неделя", "worklog_period_week")],
         [_btn("Месяц", "worklog_period_month")],
+        [_btn("Записать за дату", "worklog_add_past")],
     ])
 
 
@@ -137,6 +138,7 @@ def build_orders_period_keyboard() -> dict:
     return _inline_keyboard([
         [_btn("Вчера", "orders_period_yesterday"), _btn("Неделя", "orders_period_week")],
         [_btn("Месяц", "orders_period_month")],
+        [_btn("Добавить за дату", "orders_add_past")],
     ])
 
 
