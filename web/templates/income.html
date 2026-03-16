@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Доход — MonelANAL{% endblock %}
 {% block content %}
-<h1>Добавить доход</h1>
+<div class="page-header">
+  <a href="{{ url_for('web.more') }}" class="btn btn-back" aria-label="Назад">←</a>
+  <h1>Добавить доход</h1>
+</div>
 <form method="post">
   <div class="form-group">
     <label>Сумма (руб.)</label>

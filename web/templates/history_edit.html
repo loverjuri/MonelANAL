@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Редактировать запись — MonelANAL{% endblock %}
+{% block content %}
+<div class="page-header">
+  <a href="{{ url_for('web.history', page=request.args.get('page', 1), q=request.args.get('q', '') or none, category=request.args.get('category', '') or none) }}" class="btn btn-back" aria-label="Назад">←</a>
+  <h1>Редактировать запись</h1>
+</div>
+<form method="post" action="{{ url_for('web.history') }}">
+  <input type="hidden" name="action" value="edit">
+  <input type="hidden" name="entry_id" value="{{ entry.id }}">
+  <div class="form-group">
+    <label for="date">Дата</label>
+    <input id="date" type="date" name="date" value="{{ entry.date }}" required>
+  </div>
+  <div class="form-group">
+    <label for="amount">Сумма (руб.)</label>
+    <input id="amount" type="text" name="amount" value="{{ entry.amount | int }}" required inputmode="decimal">
+  </div>
+  <div class="form-group">
+    <label for="category">Категория</label>
+    <input id="category" type="text" name="category" value="{{ entry.category or '' }}" list="cat-list">
+    <datalist id="cat-list">
+      {% for c in categories %}
+      <option value="{{ c }}">
+      {% endfor %}
+    </datalist>
+  </div>
+  <div class="form-group">
+    <label for="comment">Комментарий</label>
+    <input id="comment" type="text" name="comment" value="{{ entry.comment or '' }}">
+  </div>
+  <button type="submit" class="btn">Сохранить</button>
+</form>
+{% endblock %}

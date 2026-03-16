@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Редактировать запись — MonelANAL{% endblock %}
+{% block content %}
+<div class="page-header">
+  <a href="{{ url_for('web.worklog', month=request.args.get('month', '')) }}" class="btn btn-back" aria-label="Назад">←</a>
+  <h1>Редактировать запись</h1>
+</div>
+<form method="post" action="{{ url_for('web.worklog') }}">
+  <input type="hidden" name="action" value="edit">
+  <input type="hidden" name="worklog_id" value="{{ entry.id }}">
+  <input type="hidden" name="month" value="{{ request.args.get('month', '') }}">
+  <div class="form-group">
+    <label for="date">Дата</label>
+    <input id="date" type="date" name="date" value="{{ entry.date }}" required>
+  </div>
+  <div class="form-group">
+    <label for="hours">Часы</label>
+    <input id="hours" type="text" name="hours" value="{{ entry.hours_worked }}" inputmode="decimal">
+  </div>
+  <div class="form-group">
+    <label for="status">Статус</label>
+    <select id="status" name="status">
+      <option value="Work" {{ 'selected' if entry.status == 'Work' else '' }}>Рабочий день</option>
+      <option value="Sick" {{ 'selected' if entry.status == 'Sick' else '' }}>Больничный</option>
+    </select>
+  </div>
+  <button type="submit" class="btn">Сохранить</button>
+</form>
+{% endblock %}

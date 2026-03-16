@@ -1,21 +1,63 @@
 {% extends "base.html" %}
 {% block title %}Бюджет — MonelANAL{% endblock %}
 {% block content %}
-<h1>Бюджет за {{ budget.month_year }}</h1>
+<div class="page-header">
+  <a href="{{ url_for('web.dashboard') }}" class="btn btn-back" aria-label="Назад">←</a>
+  <h1>Бюджет</h1>
+</div>
+
+<form method="get" class="quick-input" style="margin-bottom: 16px;">
+  <input type="month" name="month" value="{{ month_year }}" onchange="this.form.submit()" style="flex:1;">
+</form>
+
 <div class="card">
   <p>Всего лимит: {{ budget.total_limit | int }} руб.</p>
   <p>Потрачено: {{ budget.total_spent | int }} руб.</p>
   <p><strong>Остаток: {{ (budget.total_limit - budget.total_spent) | int }} руб.</strong></p>
 </div>
+
 {% if budget.limits %}
 <div class="card">
   <h2>По категориям</h2>
   {% for cat, limit in budget.limits.items() %}
   {% set spent = budget.spent.get(cat, 0) %}
-  <p>{{ cat }}: {{ spent | int }} / {{ limit | int }} руб.</p>
+  {% set diff = spent - limit %}
+  {% set pct = (spent / limit * 100) | int if limit else 0 %}
+  <div style="margin-bottom: 12px;">
+    <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+      <span>{{ cat }}</span>
+      <span style="font-size: 14px; {% if diff > 0 %}color: var(--error);{% endif %}">{{ spent | int }} / {{ limit | int }} руб.{% if diff > 0 %} (+{{ diff | int }}){% endif %}</span>
+    </div>
+    <div class="progress-bar">
+      <div class="progress-bar-fill {{ 'warn' if diff > 0 else 'done' if pct >= 100 else '' }}" style="width: {{ [pct, 100] | min }}%"></div>
+    </div>
+  </div>
   {% endfor %}
 </div>
 {% endif %}
+
+<div class="card">
+  <h2>Задать лимиты</h2>
+  <form method="post">
+    <input type="hidden" name="action" value="bulk">
+    <input type="hidden" name="month" value="{{ month_year }}">
+    {% for cat in categories %}
+    <div class="form-group" style="margin-bottom: 12px;">
+      <label for="limit_{{ cat }}">{{ cat }}</label>
+      <input id="limit_{{ cat }}" type="text" name="limit_{{ cat }}" placeholder="0"
+        value="{{ limits.get(cat, '') if cat in limits else '' }}"
+        inputmode="decimal">
+    </div>
+    {% endfor %}
+    <button type="submit" class="btn">Сохранить всё</button>
+  </form>
+  <form method="post" style="margin-top: 16px;">
+    <input type="hidden" name="action" value="suggest">
+    <input type="hidden" name="month" value="{{ month_year }}">
+    <button type="submit" class="btn btn-secondary">Предложить по средним за 3 мес.</button>
+  </form>
+</div>
+
 {% if forecast %}
 <div class="card">
   <h2>Прогноз на конец месяца</h2>

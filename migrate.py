@@ -26,6 +26,7 @@ MIGRATIONS = [
         totp_verified INTEGER DEFAULT 0,
         created_at DATETIME
     )""",
+    "ALTER TABLE users ADD COLUMN telegram_user_id VARCHAR(32)",
 ]
 
 conn = engine.connect()

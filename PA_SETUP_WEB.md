@@ -94,4 +94,13 @@ python -c "import pyotp; print('OK')"
 Web → по секции внизу: **Environment variables** или в начале WSGI:
 ```
 SECRET_KEY=ваш_секретный_ключ
+BOT_USERNAME=ИмяБотаБезСобаки
 ```
+
+BOT_USERNAME — имя бота для кнопки «Войти через Telegram» (без @). Если не задано, виджет не показывается.
+
+## Привязка Telegram к веб-пользователю
+
+При создании пользователя: `python create_web_user.py` — ответьте «y» на «Link with Telegram (CHAT_ID)?».
+
+Для уже созданного пользователя: `python create_web_user.py --link-telegram`

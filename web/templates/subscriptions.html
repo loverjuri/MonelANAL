@@ -2,12 +2,55 @@
 {% block title %}Подписки — MonelANAL{% endblock %}
 {% block content %}
 <h1>Подписки</h1>
+
+<div class="card">
+  <h2>Добавить подписку</h2>
+  <form method="post">
+    <input type="hidden" name="action" value="add">
+    <div class="form-group">
+      <label for="name">Название</label>
+      <input id="name" type="text" name="name" placeholder="Например: Netflix" required>
+    </div>
+    <div class="form-group">
+      <label for="amount">Сумма (руб.)</label>
+      <input id="amount" type="text" name="amount" placeholder="590" required inputmode="decimal">
+    </div>
+    <div class="form-group">
+      <label for="cycle">Период</label>
+      <select id="cycle" name="cycle">
+        <option value="weekly">Еженедельно</option>
+        <option value="monthly" selected>Ежемесячно</option>
+        <option value="yearly">Ежегодно</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="next_date">След. дата платежа</label>
+      <input id="next_date" type="date" name="next_date" value="{{ now or '' }}" required>
+    </div>
+    <button type="submit" class="btn">Добавить</button>
+  </form>
+</div>
+
 {% for s in subscriptions %}
 <div class="card">
   <p><strong>{{ s.name }}</strong> — {{ s.amount | int }} руб.</p>
-  <p>{{ s.cycle }} · След. дата: {{ s.next_date }}</p>
+  <p>{{ 'еженедельно' if s.cycle == 'weekly' else 'ежемесячно' if s.cycle == 'monthly' else 'ежегодно' }} · След. дата: {{ s.next_date }}</p>
+
+  <div style="margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
+    <a href="{{ url_for('web.subscription_edit_form', sub_id=s.id) }}" class="btn btn-secondary">Редактировать</a>
+    <form method="post" style="display:inline;">
+      <input type="hidden" name="action" value="advance">
+      <input type="hidden" name="subscription_id" value="{{ s.id }}">
+      <button type="submit" class="btn btn-secondary">Оплатил (перенести дату)</button>
+    </form>
+    <form method="post" style="display:inline;">
+      <input type="hidden" name="action" value="pause">
+      <input type="hidden" name="subscription_id" value="{{ s.id }}">
+      <button type="submit" class="btn btn-secondary">Приостановить</button>
+    </form>
+  </div>
 </div>
 {% else %}
-<p style="color: var(--text-muted);">Нет подписок</p>
+<p style="color: var(--text-muted);">Нет активных подписок</p>
 {% endfor %}
 {% endblock %}

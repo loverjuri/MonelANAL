@@ -20,6 +20,7 @@ DATA_DIR.mkdir(exist_ok=True)
 
 # Telegram (env preferred; Config table used as fallback when handlers run)
 BOT_TOKEN: str = os.environ.get("BOT_TOKEN", "").strip()
+BOT_USERNAME: str = os.environ.get("BOT_USERNAME", "").strip()  # For Login Widget, e.g. MyBot
 CHAT_ID: str = os.environ.get("CHAT_ID", "").strip()
 
 

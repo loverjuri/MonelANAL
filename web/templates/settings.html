@@ -2,10 +2,58 @@
 {% block title %}Настройки — MonelANAL{% endblock %}
 {% block content %}
 <h1>Настройки</h1>
-<div class="card">
-  <p>Фикс. ЗП: {{ config.FixedSalary or '—' }}</p>
-  <p>Дни выплаты: {{ config.PayDay1 or '—' }}, {{ config.PayDay2 or '—' }}</p>
-  <p>Норма часов: {{ config.WorkHoursNorm or '—' }}</p>
+<div class="card" style="margin-bottom: 12px;">
+  <h2>Тема</h2>
+  <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+    <button type="button" class="btn theme-btn btn-secondary" data-theme="dark">Тёмная</button>
+    <button type="button" class="btn theme-btn btn-secondary" data-theme="light">Светлая</button>
+    <button type="button" class="btn theme-btn btn-secondary" data-theme="system">Системная</button>
+  </div>
 </div>
-<p style="color: var(--text-muted);">Изменение настроек — через Telegram или редактирование БД.</p>
+<form method="post">
+  <div class="card">
+    <div class="form-group">
+      <label for="FixedSalary">Фикс. ЗП (руб.)</label>
+      <input id="FixedSalary" type="text" name="FixedSalary" value="{{ config.FixedSalary or '' }}" placeholder="Оклад" inputmode="decimal">
+    </div>
+    <div class="form-group">
+      <label for="PayDay1">День выплаты 1</label>
+      <input id="PayDay1" type="number" name="PayDay1" value="{{ config.PayDay1 or '' }}" placeholder="25" min="1" max="31">
+    </div>
+    <div class="form-group">
+      <label for="PayDay2">День выплаты 2</label>
+      <input id="PayDay2" type="number" name="PayDay2" value="{{ config.PayDay2 or '' }}" placeholder="10" min="1" max="31">
+    </div>
+    <div class="form-group">
+      <label for="WorkHoursNorm">Норма часов (мес.)</label>
+      <input id="WorkHoursNorm" type="text" name="WorkHoursNorm" value="{{ config.WorkHoursNorm or '' }}" placeholder="160" inputmode="decimal">
+    </div>
+    <button type="submit" class="btn">Сохранить</button>
+  </div>
+</form>
+{% endblock %}
+{% block scripts %}
+{{ super() }}
+<script>
+(function(){
+  var html = document.getElementById('html-root');
+  var meta = document.getElementById('meta-theme-color');
+  function apply(t) {
+    if (t === 'system') t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    html.setAttribute('data-theme', t);
+    meta.content = t === 'light' ? '#f6f8fa' : '#0d1117';
+    document.querySelectorAll('.theme-btn').forEach(function(b){
+      b.classList.toggle('active', b.dataset.theme === (localStorage.getItem('theme') || 'dark'));
+    });
+  }
+  document.querySelectorAll('.theme-btn').forEach(function(b){
+    b.classList.toggle('active', b.dataset.theme === (localStorage.getItem('theme') || 'dark'));
+    b.onclick = function(){
+      var t = this.dataset.theme;
+      localStorage.setItem('theme', t);
+      apply(t);
+    };
+  });
+})();
+</script>
 {% endblock %}

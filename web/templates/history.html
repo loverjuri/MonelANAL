@@ -2,15 +2,42 @@
 {% block title %}История — MonelANAL{% endblock %}
 {% block content %}
 <h1>История операций</h1>
+
+<div class="card">
+  <form method="get" action="{{ url_for('web.history') }}" class="form-inline" style="display: flex; gap: 8px; flex-wrap: wrap;">
+    <input type="hidden" name="page" value="1">
+    <input type="search" name="q" value="{{ search_q or '' }}" placeholder="Поиск: сумма, категория, комментарий" style="flex: 1; min-width: 120px;">
+    {% if categories %}
+    <select name="category">
+      <option value="">Все категории</option>
+      {% for c in categories %}
+      <option value="{{ c }}" {{ 'selected' if category == c else '' }}>{{ c }}</option>
+      {% endfor %}
+    </select>
+    {% endif %}
+    <button type="submit" class="btn">Искать</button>
+  </form>
+</div>
+
 {% for r in rows %}
-<div class="history-card">
-  <span class="amount {{ 'income' if r.type in ('IncomeSalary','IncomeSecond') else '' }}">{{ r.amount | int }} руб.</span>
-  <span class="meta">{{ r.date }} · {{ r.category or r.comment or r.type }}</span>
+<div class="history-card" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+  <div>
+    <span class="amount {{ 'income' if r.type in ('IncomeSalary','IncomeSecond') else '' }}">{{ r.amount | int }} руб.</span>
+    <span class="meta">{{ r.date }} · {{ r.category or r.comment or r.type }}</span>
+  </div>
+  <div style="display: flex; gap: 8px;">
+    <a href="{{ url_for('web.history_edit_form', entry_id=r.id) }}?q={{ search_q or '' }}&category={{ category or '' }}&page={{ page }}" class="btn btn-secondary">Изменить</a>
+    <form method="post" action="{{ url_for('web.history') }}" style="display:inline;">
+      <input type="hidden" name="action" value="delete">
+      <input type="hidden" name="entry_id" value="{{ r.id }}">
+      <button type="submit" class="btn btn-secondary" onclick="return confirm('Удалить запись?')">Удалить</button>
+    </form>
+  </div>
 </div>
 {% else %}
 <p style="color: var(--text-muted);">Нет записей</p>
 {% endfor %}
 {% if has_more %}
-<p><a href="{{ url_for('web.history', page=page+1) }}">Ещё</a></p>
+<p><a href="{{ url_for('web.history', page=page+1, q=search_q or '', category=category or '') }}">Ещё</a></p>
 {% endif %}
 {% endblock %}

@@ -63,6 +63,10 @@ def get_user_by_id(session: Session, user_id: int) -> Optional[User]:
     return session.query(User).filter(User.id == user_id).first()
 
 
+def get_user_by_telegram_id(session: Session, telegram_user_id: str) -> Optional[User]:
+    return session.query(User).filter(User.telegram_user_id == str(telegram_user_id)).first()
+
+
 def update_user(session: Session, user_id: int, **kwargs) -> bool:
     u = get_user_by_id(session, user_id)
     if not u:

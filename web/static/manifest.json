@@ -1,0 +1,11 @@
+{
+  "name": "MonelANAL",
+  "short_name": "MonelANAL",
+  "description": "Финансовый учёт и бюджет",
+  "start_url": "/web/",
+  "display": "standalone",
+  "background_color": "#0d1117",
+  "theme_color": "#0d1117",
+  "orientation": "portrait-primary",
+  "icons": []
+}

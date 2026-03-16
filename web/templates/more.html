@@ -2,7 +2,14 @@
 {% block title %}Ещё — MonelANAL{% endblock %}
 {% block content %}
 <h1>Ещё</h1>
-<div class="card">
+<div class="card" style="margin-bottom: 12px;">
+  <h2>Поиск</h2>
+  <form action="{{ url_for('web.history') }}" method="get" style="display: flex; gap: 8px;">
+    <input type="search" name="q" placeholder="Сумма, категория, комментарий..." style="flex: 1; min-width: 0;" value="">
+    <button type="submit" class="btn">Искать</button>
+  </form>
+</div>
+<div class="card more-list">
   <p><a href="{{ url_for('web.income') }}">Добавить доход</a></p>
   <p><a href="{{ url_for('web.debts') }}">Долги</a></p>
   <p><a href="{{ url_for('web.subscriptions') }}">Подписки</a></p>

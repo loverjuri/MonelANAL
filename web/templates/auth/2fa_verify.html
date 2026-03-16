@@ -1,10 +1,11 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" id="html-root">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>2FA — MonelANAL</title>
   <link rel="stylesheet" href="{{ url_for('web.static', filename='css/dark.css') }}">
+  <link rel="stylesheet" href="{{ url_for('web.static', filename='css/light.css') }}">
 </head>
 <body>
   <div class="container" style="max-width: 320px; margin-top: 60px;">
@@ -19,5 +20,6 @@
       <button type="submit" class="btn" style="width: 100%;">Подтвердить</button>
     </form>
   </div>
+  <script>(function(){ var t=localStorage.getItem('theme')||'dark'; if(t==='system') t=window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'; document.getElementById('html-root').setAttribute('data-theme',t); })();</script>
 </body>
 </html>

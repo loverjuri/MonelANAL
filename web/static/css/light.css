@@ -1,0 +1,36 @@
+/* Light theme - applied when [data-theme="light"] */
+[data-theme="light"] {
+  --bg: #f6f8fa;
+  --bg-card: #ffffff;
+  --bg-input: #eaeef2;
+  --text: #1f2328;
+  --text-muted: #656d76;
+  --accent: #0969da;
+  --accent-hover: #0550ae;
+  --success: #1a7f37;
+  --error: #cf222e;
+  --border: #d0d7de;
+}
+
+[data-theme="light"] body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+[data-theme="light"] .flash-success,
+[data-theme="light"] .toast-success {
+  background: rgba(26, 127, 55, 0.1);
+}
+
+[data-theme="light"] .flash-error,
+[data-theme="light"] .toast-error {
+  background: rgba(207, 34, 46, 0.1);
+}
+
+[data-theme="light"] #toast-container .toast.toast-success {
+  background: rgba(26, 127, 55, 0.15);
+}
+
+[data-theme="light"] #toast-container .toast.toast-error {
+  background: rgba(207, 34, 46, 0.15);
+}

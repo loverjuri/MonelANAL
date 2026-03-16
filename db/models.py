@@ -209,6 +209,7 @@ class User(Base):
     password_hash = Column(String(256), nullable=False)
     totp_secret = Column(String(64))
     totp_verified = Column(Boolean, default=False)
+    telegram_user_id = Column(String(32))  # Telegram user id for Login Widget
     created_at = Column(DateTime, default=datetime.utcnow)
 
     def get_id(self):

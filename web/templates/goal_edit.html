@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Редактировать цель — MonelANAL{% endblock %}
+{% block content %}
+<div class="page-header">
+  <a href="{{ url_for('web.goals') }}" class="btn btn-back" aria-label="Назад">←</a>
+  <h1>Редактировать цель</h1>
+</div>
+<form method="post" action="{{ url_for('web.goals') }}">
+  <input type="hidden" name="action" value="edit">
+  <input type="hidden" name="goal_id" value="{{ goal.id }}">
+  <div class="form-group">
+    <label for="name">Название</label>
+    <input id="name" type="text" name="name" value="{{ goal.name }}" required>
+  </div>
+  <div class="form-group">
+    <label for="target_amount">Цель (руб.)</label>
+    <input id="target_amount" type="text" name="target_amount" value="{{ goal.target_amount | int }}" required inputmode="decimal">
+  </div>
+  <div class="form-group">
+    <label for="current_amount">Текущее (руб.)</label>
+    <input id="current_amount" type="text" name="current_amount" value="{{ goal.current_amount | int }}" inputmode="decimal">
+  </div>
+  <div class="form-group">
+    <label for="deadline">Дедлайн</label>
+    <input id="deadline" type="date" name="deadline" value="{{ goal.deadline or '' }}">
+  </div>
+  <button type="submit" class="btn">Сохранить</button>
+</form>
+{% endblock %}

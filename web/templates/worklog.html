@@ -2,10 +2,45 @@
 {% block title %}Рабочие дни — MonelANAL{% endblock %}
 {% block content %}
 <h1>Учёт рабочего времени</h1>
+
+<div class="card">
+  <h2>Добавить запись</h2>
+  <form method="post">
+    <input type="hidden" name="action" value="add">
+    <input type="hidden" name="month" value="{{ month }}">
+    <div class="form-group">
+      <label for="date">Дата</label>
+      <input id="date" type="date" name="date" value="{{ today }}" required>
+    </div>
+    <div class="form-group">
+      <label for="hours">Часы</label>
+      <input id="hours" type="text" name="hours" placeholder="8" inputmode="decimal">
+    </div>
+    <div class="form-group">
+      <label for="status">Статус</label>
+      <select id="status" name="status">
+        <option value="Work">Рабочий день</option>
+        <option value="Sick">Больничный</option>
+      </select>
+    </div>
+    <button type="submit" class="btn">Добавить</button>
+  </form>
+</div>
+
+<div class="card" style="margin-bottom: 12px;">
+  <form method="get" action="{{ url_for('web.worklog') }}">
+    <label for="month">Месяц</label>
+    <input id="month" type="month" name="month" value="{{ month }}" onchange="this.form.submit()">
+  </form>
+</div>
+
 {% for e in entries %}
-<div class="history-card">
-  <span class="amount">{{ e.date }}</span>
-  <span class="meta">{{ e.hours_worked }} ч · {{ e.status }}</span>
+<div class="history-card" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+  <div>
+    <span class="amount">{{ e.date }}</span>
+    <span class="meta">{{ e.hours_worked }} ч · {{ 'Рабочий' if e.status == 'Work' else 'Больничный' }}</span>
+  </div>
+  <a href="{{ url_for('web.worklog_edit_form', wl_id=e.id) }}?month={{ month }}" class="btn btn-secondary">Редактировать</a>
 </div>
 {% else %}
 <p style="color: var(--text-muted);">Нет записей за этот месяц</p>

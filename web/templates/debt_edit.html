@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Редактировать долг — MonelANAL{% endblock %}
+{% block content %}
+<div class="page-header">
+  <a href="{{ url_for('web.debts') }}" class="btn btn-back" aria-label="Назад">←</a>
+  <h1>Редактировать долг</h1>
+</div>
+<form method="post" action="{{ url_for('web.debts') }}">
+  <input type="hidden" name="action" value="edit">
+  <input type="hidden" name="debt_id" value="{{ debt.id }}">
+  <div class="form-group">
+    <label for="counterparty">Контрагент</label>
+    <input id="counterparty" type="text" name="counterparty" value="{{ debt.counterparty }}" required>
+  </div>
+  <div class="form-group">
+    <label for="remaining_amount">Остаток (руб.)</label>
+    <input id="remaining_amount" type="text" name="remaining_amount" value="{{ debt.remaining_amount | int }}" required inputmode="decimal">
+  </div>
+  <div class="form-group">
+    <label for="due_date">Срок возврата</label>
+    <input id="due_date" type="date" name="due_date" value="{{ debt.due_date or '' }}">
+  </div>
+  <div class="form-group">
+    <label for="next_payment_date">След. платёж</label>
+    <input id="next_payment_date" type="date" name="next_payment_date" value="{{ debt.next_payment_date or '' }}">
+  </div>
+  <button type="submit" class="btn">Сохранить</button>
+</form>
+{% endblock %}

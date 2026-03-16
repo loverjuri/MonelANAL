@@ -6,10 +6,51 @@
   <p>Я должен: {{ summary.owe | int }} руб.</p>
   <p>Мне должны: {{ summary.lent | int }} руб.</p>
 </div>
+
+<div class="card">
+  <h2>Добавить долг</h2>
+  <form method="post">
+    <input type="hidden" name="action" value="add">
+    <div class="form-group">
+      <label for="direction">Тип</label>
+      <select id="direction" name="direction" required>
+        <option value="owe">Я должен</option>
+        <option value="lent">Мне должны</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="counterparty">Контрагент</label>
+      <input id="counterparty" type="text" name="counterparty" placeholder="Имя или организация" required>
+    </div>
+    <div class="form-group">
+      <label for="amount">Сумма (руб.)</label>
+      <input id="amount" type="text" name="amount" placeholder="10000" required inputmode="decimal">
+    </div>
+    <div class="form-group">
+      <label for="due_date">Срок возврата</label>
+      <input id="due_date" type="date" name="due_date">
+    </div>
+    <button type="submit" class="btn">Добавить</button>
+  </form>
+</div>
+
 {% for d in debts %}
 <div class="card">
-  <p><strong>{{ d.counterparty }}</strong> ({{ 'долг' if d.direction == 'owe' else 'в долг' }})</p>
+  <p><strong>{{ d.counterparty }}</strong> ({{ 'я должен' if d.direction == 'owe' else 'мне должны' }})</p>
   <p>Остаток: {{ d.remaining_amount | int }} руб.</p>
+  {% if d.due_date %}<p>Срок: {{ d.due_date }}</p>{% endif %}
+
+  <form method="post" style="display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;">
+    <input type="hidden" name="action" value="payment">
+    <input type="hidden" name="debt_id" value="{{ d.id }}">
+    <input type="text" name="amount" placeholder="Сумма платежа" style="flex:1; min-width: 100px;" inputmode="decimal">
+    <input type="date" name="payment_date" value="{{ now or '' }}" title="Дата платежа">
+    <button type="submit" class="btn">Платёж</button>
+  </form>
+
+  <div style="margin-top: 12px;">
+    <a href="{{ url_for('web.debt_edit_form', debt_id=d.id) }}" class="btn btn-secondary">Редактировать</a>
+  </div>
 </div>
 {% else %}
 <p style="color: var(--text-muted);">Нет активных долгов</p>
