@@ -117,6 +117,9 @@ path = '/home/USERNAME/monelanal'
 | BOT_TOKEN   | Токен от @BotFather                                |
 | CHAT_ID     | Ваш Telegram Chat ID (от @userinfobot)            |
 | CRON_SECRET | Секретный токен для cron (придумайте строку)      |
+| SECRET_KEY  | Секрет для сессий веб-приложения                  |
+| RECAPTCHA_SITE_KEY | reCAPTCHA v3 site key (опционально)        |
+| RECAPTCHA_SECRET_KEY | reCAPTCHA v3 secret key (опционально)     |
 
 ---
 
@@ -160,6 +163,22 @@ python migrate.py
 ```
 
 Без этого появятся ошибки `no such column: finance.exclude_from_budget` и `no such column: debts.payment_cycle`.
+
+---
+
+## 6b. Веб-приложение (опционально)
+
+Веб-версия доступна по адресу `https://USERNAME.pythonanywhere.com/web/` с логином и паролем.
+
+1. **Создать пользователя** (один раз):
+   ```bash
+   python create_web_user.py
+   # Введите логин, пароль. Отсканируйте QR-код в Google Authenticator.
+   ```
+
+2. **Переменные окружения**: добавьте `SECRET_KEY`. Для капчи (защита от брутфорса) — `RECAPTCHA_SITE_KEY` и `RECAPTCHA_SECRET_KEY` с [Google reCAPTCHA v3](https://www.google.com/recaptcha/admin).
+
+3. **Статика**: в PA Web укажите путь к статике `/web/static/` для экономии CPU.
 
 ---
 

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Статус — MonelANAL{% endblock %}
+{% block content %}
+<div class="quick-input">
+  <form action="{{ url_for('web.expense_quick') }}" method="post" style="flex: 1; display: flex; gap: 8px;" id="quick-expense-form">
+    <input type="text" name="q" placeholder="500 еда" title="Сумма и категория">
+    <button type="submit" class="btn">+</button>
+  </form>
+</div>
+<script>
+  document.getElementById('quick-expense-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    var form = this;
+    fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.ok) { location.reload(); }
+        else { alert(d.error || 'Ошибка'); }
+      });
+  });
+</script>
+<div class="card">
+  <h2>Статус</h2>
+  <p>Накоплено ЗП: {{ status.accrued_main }} руб.</p>
+  <p>Вторая работа (месяц): {{ status.accrued_second_month }} руб.</p>
+  <p><strong>Баланс: {{ status.balance }} руб.</strong></p>
+  <p>Следующая выплата: {{ status.next_pay }}</p>
+  <p>Долги: я должен {{ status.debt_owe }}, мне должны {{ status.debt_lent }}</p>
+</div>
+<div class="card">
+  <h2>Последние операции</h2>
+  {% for r in recent %}
+  <div class="history-card">
+    <span class="amount {{ 'income' if r.type in ('IncomeSalary','IncomeSecond') else '' }}">{{ r.amount }} руб.</span>
+    <span class="meta">{{ r.date }} · {{ r.category or r.comment or r.type }}</span>
+  </div>
+  {% else %}
+  <p style="color: var(--text-muted);">Нет записей</p>
+  {% endfor %}
+</div>
+{% endblock %}

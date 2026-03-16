@@ -11,7 +11,7 @@ from db.models import (
     Config, WorkLog, Order, Finance, State, Log, Calculation,
     BudgetPlan, Goal, Subscription,
     Debt, DebtPayment, Category, Tag, ExpenseTemplate, Achievement,
-    AuditLog,
+    AuditLog, User,
 )
 
 TZ = ZoneInfo("Europe/Moscow")
@@ -52,6 +52,26 @@ def set_config_param(session: Session, name: str, value: str):
     else:
         session.add(Config(parameter=name, value=value))
     session.commit()
+
+
+# User (web auth)
+def get_user_by_username(session: Session, username: str) -> Optional[User]:
+    return session.query(User).filter(User.username == username).first()
+
+
+def get_user_by_id(session: Session, user_id: int) -> Optional[User]:
+    return session.query(User).filter(User.id == user_id).first()
+
+
+def update_user(session: Session, user_id: int, **kwargs) -> bool:
+    u = get_user_by_id(session, user_id)
+    if not u:
+        return False
+    for k, v in kwargs.items():
+        if hasattr(u, k):
+            setattr(u, k, v)
+    session.commit()
+    return True
 
 
 # WorkLog

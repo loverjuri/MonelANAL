@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Цели — MonelANAL{% endblock %}
+{% block content %}
+<h1>Цели накоплений</h1>
+{% for g in goals %}
+<div class="card">
+  <p><strong>{{ g.name }}</strong></p>
+  <p>{{ g.current_amount | int }} / {{ g.target_amount | int }} руб. ({{ (g.current_amount / g.target_amount * 100) | int if g.target_amount else 0 }}%)</p>
+  {% if g.deadline %}<p>Дедлайн: {{ g.deadline }}</p>{% endif %}
+</div>
+{% else %}
+<p style="color: var(--text-muted);">Нет активных целей</p>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Шаблоны — MonelANAL{% endblock %}
+{% block content %}
+<h1>Шаблоны расходов</h1>
+{% for t in templates %}
+<div class="card" style="display: flex; justify-content: space-between; align-items: center;">
+  <div>
+    <p><strong>{{ t.name }}</strong> — {{ t.amount | int }} руб. ({{ t.category }})</p>
+  </div>
+  <form action="{{ url_for('web.template_use', template_id=t.id) }}" method="post">
+    <button type="submit" class="btn">Применить</button>
+  </form>
+</div>
+{% else %}
+<p style="color: var(--text-muted);">Нет шаблонов</p>
+{% endfor %}
+{% endblock %}

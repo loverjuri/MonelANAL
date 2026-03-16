@@ -17,6 +17,14 @@ MIGRATIONS = [
     'ALTER TABLE subscriptions ADD COLUMN "group" TEXT DEFAULT \'other\'',
     "ALTER TABLE subscriptions ADD COLUMN sub_type TEXT DEFAULT 'expense'",
     "ALTER TABLE subscriptions ADD COLUMN is_overdue INTEGER DEFAULT 0",
+    """CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username VARCHAR(64) UNIQUE NOT NULL,
+        password_hash VARCHAR(256) NOT NULL,
+        totp_secret VARCHAR(64),
+        totp_verified INTEGER DEFAULT 0,
+        created_at DATETIME
+    )""",
 ]
 
 conn = engine.connect()

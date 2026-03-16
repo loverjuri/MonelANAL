@@ -1,18 +1,47 @@
 """
-Flask app: webhook endpoint for Telegram + cron endpoints for scheduled tasks.
+Flask app: webhook endpoint for Telegram + cron endpoints for scheduled tasks + web app.
 """
-from flask import Flask, request, jsonify
+from datetime import timedelta
+from flask import Flask, request, jsonify, redirect, url_for
 
 # Import process_update so it's available when webhook is hit
 from bot.process_update import process_update
+from config import SECRET_KEY
 
 app = Flask(__name__)
+app.config["SECRET_KEY"] = SECRET_KEY
+app.config["SESSION_COOKIE_SECURE"] = False  # True when using HTTPS
+app.config["REMEMBER_COOKIE_DURATION"] = timedelta(minutes=15)
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=15)
+
+# Rate limiting
+from extensions import limiter
+limiter.init_app(app)
+
+# Web app
+from web import init_web
+init_web(app)
+
+
+@app.before_request
+def make_session_permanent():
+    """Use server-side session lifetime for 15 min timeout."""
+    from flask import session
+    from flask_login import current_user
+    if current_user.is_authenticated:
+        session.permanent = True
 
 
 @app.route("/", methods=["GET"])
 def health():
     """Health check."""
     return "OK", 200
+
+
+@app.route("/web", methods=["GET"])
+def web_root():
+    """Redirect /web to /web/."""
+    return redirect(url_for("web.index"), code=302)
 
 
 @app.route("/webhook", methods=["POST"])

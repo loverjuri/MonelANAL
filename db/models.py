@@ -201,6 +201,32 @@ class ExpenseTemplate(Base):
     usage_count = Column(Integer, default=0)
 
 
+class User(Base):
+    """Web app user (single-user)."""
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(64), unique=True, nullable=False)
+    password_hash = Column(String(256), nullable=False)
+    totp_secret = Column(String(64))
+    totp_verified = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def get_id(self):
+        return str(self.id)
+
+    @property
+    def is_authenticated(self):
+        return True
+
+    @property
+    def is_active(self):
+        return True
+
+    @property
+    def is_anonymous(self):
+        return False
+
+
 class Achievement(Base):
     """Gamification achievements."""
     __tablename__ = "achievements"

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}История — MonelANAL{% endblock %}
+{% block content %}
+<h1>История операций</h1>
+{% for r in rows %}
+<div class="history-card">
+  <span class="amount {{ 'income' if r.type in ('IncomeSalary','IncomeSecond') else '' }}">{{ r.amount | int }} руб.</span>
+  <span class="meta">{{ r.date }} · {{ r.category or r.comment or r.type }}</span>
+</div>
+{% else %}
+<p style="color: var(--text-muted);">Нет записей</p>
+{% endfor %}
+{% if has_more %}
+<p><a href="{{ url_for('web.history', page=page+1) }}">Ещё</a></p>
+{% endif %}
+{% endblock %}

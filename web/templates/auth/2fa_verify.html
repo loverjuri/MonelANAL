@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>2FA — MonelANAL</title>
+  <link rel="stylesheet" href="{{ url_for('web.static', filename='css/dark.css') }}">
+</head>
+<body>
+  <div class="container" style="max-width: 320px; margin-top: 60px;">
+    <h1>Код из приложения</h1>
+    <p style="color: var(--text-muted);">Введите 6-значный код из Google Authenticator или другого приложения.</p>
+    <form method="post">
+      <div class="form-group">
+        <input type="text" name="code" maxlength="6" pattern="[0-9]*" inputmode="numeric"
+               placeholder="000000" autocomplete="one-time-code" autofocus
+               style="letter-spacing: 8px; font-size: 24px; text-align: center;">
+      </div>
+      <button type="submit" class="btn" style="width: 100%;">Подтвердить</button>
+    </form>
+  </div>
+</body>
+</html>

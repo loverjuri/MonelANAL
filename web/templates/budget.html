@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Бюджет — MonelANAL{% endblock %}
+{% block content %}
+<h1>Бюджет за {{ budget.month_year }}</h1>
+<div class="card">
+  <p>Всего лимит: {{ budget.total_limit | int }} руб.</p>
+  <p>Потрачено: {{ budget.total_spent | int }} руб.</p>
+  <p><strong>Остаток: {{ (budget.total_limit - budget.total_spent) | int }} руб.</strong></p>
+</div>
+{% if budget.limits %}
+<div class="card">
+  <h2>По категориям</h2>
+  {% for cat, limit in budget.limits.items() %}
+  {% set spent = budget.spent.get(cat, 0) %}
+  <p>{{ cat }}: {{ spent | int }} / {{ limit | int }} руб.</p>
+  {% endfor %}
+</div>
+{% endif %}
+{% if forecast %}
+<div class="card">
+  <h2>Прогноз на конец месяца</h2>
+  <p>Прогноз баланса: {{ forecast.forecast_balance }} руб.</p>
+  <p>Осталось дней: {{ forecast.days_left }}</p>
+</div>
+{% endif %}
+{% endblock %}

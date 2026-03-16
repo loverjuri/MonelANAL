@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Импорт — MonelANAL{% endblock %}
+{% block content %}
+<h1>Импорт из Excel</h1>
+<p style="color: var(--text-muted);">Формат Alfa-Bank. Макс. 1 MB, 500 строк.</p>
+<form method="post" enctype="multipart/form-data">
+  <div class="form-group">
+    <label>Файл .xlsx</label>
+    <input type="file" name="file" accept=".xlsx,.xls" required>
+  </div>
+  <button type="submit" class="btn">Импортировать</button>
+</form>
+{% endblock %}

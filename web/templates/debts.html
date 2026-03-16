@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Долги — MonelANAL{% endblock %}
+{% block content %}
+<h1>Долги</h1>
+<div class="card">
+  <p>Я должен: {{ summary.owe | int }} руб.</p>
+  <p>Мне должны: {{ summary.lent | int }} руб.</p>
+</div>
+{% for d in debts %}
+<div class="card">
+  <p><strong>{{ d.counterparty }}</strong> ({{ 'долг' if d.direction == 'owe' else 'в долг' }})</p>
+  <p>Остаток: {{ d.remaining_amount | int }} руб.</p>
+</div>
+{% else %}
+<p style="color: var(--text-muted);">Нет активных долгов</p>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Подписки — MonelANAL{% endblock %}
+{% block content %}
+<h1>Подписки</h1>
+{% for s in subscriptions %}
+<div class="card">
+  <p><strong>{{ s.name }}</strong> — {{ s.amount | int }} руб.</p>
+  <p>{{ s.cycle }} · След. дата: {{ s.next_date }}</p>
+</div>
+{% else %}
+<p style="color: var(--text-muted);">Нет подписок</p>
+{% endfor %}
+{% endblock %}

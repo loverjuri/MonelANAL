@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Рабочие дни — MonelANAL{% endblock %}
+{% block content %}
+<h1>Учёт рабочего времени</h1>
+{% for e in entries %}
+<div class="history-card">
+  <span class="amount">{{ e.date }}</span>
+  <span class="meta">{{ e.hours_worked }} ч · {{ e.status }}</span>
+</div>
+{% else %}
+<p style="color: var(--text-muted);">Нет записей за этот месяц</p>
+{% endfor %}
+{% endblock %}

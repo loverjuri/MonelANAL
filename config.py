@@ -41,5 +41,12 @@ def get_chat_id() -> str:
 # Cron protection
 CRON_SECRET: str = os.environ.get("CRON_SECRET", "").strip()
 
+# Web app (reCAPTCHA v3)
+RECAPTCHA_SITE_KEY: str = os.environ.get("RECAPTCHA_SITE_KEY", "").strip()
+RECAPTCHA_SECRET_KEY: str = os.environ.get("RECAPTCHA_SECRET_KEY", "").strip()
+
+# Flask secret (required for sessions)
+SECRET_KEY: str = os.environ.get("SECRET_KEY", "").strip() or "dev-secret-change-in-prod"
+
 # Timezone
 TIMEZONE = "Europe/Moscow"

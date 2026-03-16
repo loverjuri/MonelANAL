@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Достижения — MonelANAL{% endblock %}
+{% block content %}
+<h1>Достижения</h1>
+<div class="card">
+  <p><strong>Streak:</strong> {{ streak }} дн. подряд</p>
+</div>
+<h2>Разблокировано</h2>
+{% for a in achievements %}
+<div class="card">
+  <p>🏆 {{ a.name }}</p>
+  <p style="color: var(--text-muted);">{{ a.description }}</p>
+</div>
+{% else %}
+<p style="color: var(--text-muted);">Пока нет достижений</p>
+{% endfor %}
+{% endblock %}

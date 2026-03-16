@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Ещё — MonelANAL{% endblock %}
+{% block content %}
+<h1>Ещё</h1>
+<div class="card">
+  <p><a href="{{ url_for('web.income') }}">Добавить доход</a></p>
+  <p><a href="{{ url_for('web.debts') }}">Долги</a></p>
+  <p><a href="{{ url_for('web.subscriptions') }}">Подписки</a></p>
+  <p><a href="{{ url_for('web.analytics') }}">Аналитика</a></p>
+  <p><a href="{{ url_for('web.history') }}">История</a></p>
+  <p><a href="{{ url_for('web.templates_list') }}">Шаблоны</a></p>
+  <p><a href="{{ url_for('web.worklog') }}">Рабочие дни</a></p>
+  <p><a href="{{ url_for('web.achievements') }}">Достижения</a></p>
+  <p><a href="{{ url_for('web.import_data') }}">Импорт Excel</a></p>
+  <p><a href="{{ url_for('web.export_data') }}">Экспорт CSV</a></p>
+  <p><a href="{{ url_for('web.settings') }}">Настройки</a></p>
+</div>
+<p><a href="{{ url_for('web.logout') }}" style="color: var(--text-muted);">Выйти</a></p>
+{% endblock %}

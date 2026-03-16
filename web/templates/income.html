@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Доход — MonelANAL{% endblock %}
+{% block content %}
+<h1>Добавить доход</h1>
+<form method="post">
+  <div class="form-group">
+    <label>Сумма (руб.)</label>
+    <input type="text" name="amount" placeholder="1000" required inputmode="decimal">
+  </div>
+  <div class="form-group">
+    <label>Дата</label>
+    <input type="date" name="date" value="{{ today or request.values.date or '' }}">
+  </div>
+  <div class="form-group">
+    <label>Комментарий</label>
+    <input type="text" name="comment" placeholder="Опционально">
+  </div>
+  <button type="submit" class="btn">Записать</button>
+</form>
+{% endblock %}

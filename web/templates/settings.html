@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Настройки — MonelANAL{% endblock %}
+{% block content %}
+<h1>Настройки</h1>
+<div class="card">
+  <p>Фикс. ЗП: {{ config.FixedSalary or '—' }}</p>
+  <p>Дни выплаты: {{ config.PayDay1 or '—' }}, {{ config.PayDay2 or '—' }}</p>
+  <p>Норма часов: {{ config.WorkHoursNorm or '—' }}</p>
+</div>
+<p style="color: var(--text-muted);">Изменение настроек — через Telegram или редактирование БД.</p>
+{% endblock %}
