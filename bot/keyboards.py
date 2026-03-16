@@ -21,6 +21,10 @@ def _btn(text: str, callback_data: str) -> dict:
     return {"text": text, "callback_data": callback_data}
 
 
+def _web_app_btn(text: str, url: str) -> dict:
+    return {"text": text, "web_app": {"url": url}}
+
+
 def build_main_work_keyboard() -> dict:
     return _inline_keyboard([
         [
@@ -90,14 +94,22 @@ def build_hours_quick_keyboard() -> dict:
 
 
 def build_main_menu_keyboard() -> dict:
-    return _inline_keyboard([
+    rows = [
         [_btn("Статус", "cmd_status"), _btn("Расход", "cmd_expense")],
         [_btn("Доход", "cmd_income"), _btn("Бюджет", "cmd_budget")],
         [_btn("Цели", "cmd_goals"), _btn("Долги", "cmd_debts")],
         [_btn("Подписки", "cmd_subscriptions"), _btn("Аналитика", "cmd_analytics")],
         [_btn("История", "cmd_history"), _btn("Шаблоны", "cmd_templates")],
         [_btn("Настройки", "cmd_settings"), _btn("Справка", "cmd_help")],
-    ])
+    ]
+    try:
+        from config import get_web_app_url
+        url = get_web_app_url()
+        if url:
+            rows.append([_web_app_btn("Веб-приложение", url)])
+    except Exception:
+        pass
+    return _inline_keyboard(rows)
 
 
 def build_cancel_keyboard() -> dict:

@@ -122,6 +122,7 @@ path = '/home/USERNAME/monelanal'
 | SECRET_KEY  | Секрет для сессий веб-приложения                  |
 | RECAPTCHA_SITE_KEY | reCAPTCHA v3 site key (опционально)        |
 | RECAPTCHA_SECRET_KEY | reCAPTCHA v3 secret key (опционально)     |
+| WEB_APP_URL | URL веб-приложения для автовхода (например `https://USERNAME.pythonanywhere.com/web/login`) |
 
 ---
 

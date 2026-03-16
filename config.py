@@ -23,6 +23,25 @@ BOT_TOKEN: str = os.environ.get("BOT_TOKEN", "").strip()
 BOT_USERNAME: str = os.environ.get("BOT_USERNAME", "").strip()  # For Login Widget, e.g. MyBot
 CHAT_ID: str = os.environ.get("CHAT_ID", "").strip()
 
+# Web App URL for Mini App (автовход). Example: https://monocore.pythonanywhere.com/web/login
+WEB_APP_URL: str = os.environ.get("WEB_APP_URL", "").strip()
+
+
+def get_web_app_url() -> str:
+    """Web App URL from env or Config table."""
+    if WEB_APP_URL:
+        return WEB_APP_URL.strip()
+    try:
+        from db.repositories import get_session, get_config_param
+        session = get_session()
+        try:
+            v = get_config_param(session, "WebAppUrl")
+            return (v or "").strip()
+        finally:
+            session.close()
+    except Exception:
+        return ""
+
 
 def get_chat_id() -> str:
     """Chat ID from env or Config table."""
