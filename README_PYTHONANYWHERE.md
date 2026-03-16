@@ -66,6 +66,8 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+**Важно:** В WSGI настройте путь к `venv` (см. раздел 4). Без этого приложение будет использовать системный Python без ваших пакетов (ошибка `ModuleNotFoundError`).
+
 ---
 
 ## 4. Настройка WSGI
@@ -151,18 +153,25 @@ python run_init.py
 
 ---
 
-## 6a. Миграции (после обновления кода)
+## 6a. Миграции и инициализация
 
-Если вы обновили код (git pull), запустите миграции для новых колонок:
+**Первая настройка:** если БД пустая или новая, сначала запустите:
 
 ```bash
 cd ~/monelanal
 source venv/bin/activate
+python run_init.py   # создаёт все таблицы
+python migrate.py   # добавляет новые колонки и таблицы
+```
+
+**После обновления кода (git pull):**
+
+```bash
 pip install -r requirements.txt
 python migrate.py
 ```
 
-Без этого появятся ошибки `no such column: finance.exclude_from_budget` и `no such column: debts.payment_cycle`.
+Без этого возможны ошибки `no such table: logs`, `no such column: finance.exclude_from_budget` и т.п.
 
 ---
 

@@ -1,7 +1,10 @@
 """Authentication: login, logout, 2FA."""
 import requests
 from flask import render_template, redirect, url_for, request, flash, session
-from extensions import limiter
+try:
+    from extensions import limiter
+except ImportError:
+    limiter = None
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import check_password_hash
 import pyotp
@@ -32,7 +35,7 @@ def verify_recaptcha(token: str) -> bool:
 
 
 @web_bp.route("/login", methods=["GET", "POST"])
-@limiter.limit("3 per 15 minutes")
+@(limiter.limit("3 per 15 minutes") if limiter else lambda f: f)
 def login():
     if current_user.is_authenticated:
         return redirect(url_for("web.dashboard"))

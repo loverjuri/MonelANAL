@@ -14,9 +14,12 @@ app.config["SESSION_COOKIE_SECURE"] = False  # True when using HTTPS
 app.config["REMEMBER_COOKIE_DURATION"] = timedelta(minutes=15)
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=15)
 
-# Rate limiting
-from extensions import limiter
-limiter.init_app(app)
+# Rate limiting (optional - app works without flask-limiter if not installed)
+try:
+    from extensions import limiter
+    limiter.init_app(app)
+except ImportError:
+    limiter = None
 
 # Web app
 from web import init_web

@@ -56,6 +56,7 @@ def process_update(update: dict):
                 return
             handle_callback_query(chat_id, cq.get("id", ""), data, msg_id)
     except Exception as e:
+        session.rollback()
         log_error(session, f"processUpdate: {e}")
         if chat_id:
             send_message(chat_id, "Произошла ошибка. Проверьте журнал и логи.")

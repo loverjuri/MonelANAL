@@ -334,15 +334,21 @@ def clear_state(session: Session, chat_id):
     session.commit()
 
 
-# Logs
+# Logs (resilient: if logs table missing, rollback and continue)
 def log_info(session: Session, message: str):
-    session.add(Log(level="Info", message=message))
-    session.commit()
+    try:
+        session.add(Log(level="Info", message=message))
+        session.commit()
+    except Exception:
+        session.rollback()
 
 
 def log_error(session: Session, message: str):
-    session.add(Log(level="Error", message=message))
-    session.commit()
+    try:
+        session.add(Log(level="Error", message=message))
+        session.commit()
+    except Exception:
+        session.rollback()
 
 
 def log_error_with_exception(session: Session, context: str, err: Exception):

@@ -3,6 +3,7 @@ from db.models import engine
 from sqlalchemy import text
 
 MIGRATIONS = [
+    "CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp DATETIME, level VARCHAR(16), message TEXT)",
     "ALTER TABLE finance ADD COLUMN is_deleted INTEGER DEFAULT 0",
     "ALTER TABLE finance ADD COLUMN exclude_from_budget INTEGER DEFAULT 0",
     "CREATE TABLE IF NOT EXISTS audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp DATETIME, chat_id VARCHAR(32), entity VARCHAR(32), entity_id VARCHAR(64), action VARCHAR(16), field VARCHAR(64), old_value TEXT, new_value TEXT)",
