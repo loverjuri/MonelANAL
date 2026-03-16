@@ -1205,3 +1205,19 @@ def mass_operations():
     finally:
         session.close()
     return redirect(url_for("web.mass_operations"))
+
+
+# ─── Prod calendar admin ───────────────────────────────────────
+@web_bp.route("/admin/refresh-calendar")
+@login_required
+def refresh_calendar():
+    from services.prod_calendar import refresh_calendar_from_api, get_month_norm_hours_for_date
+    today = get_today_msk()
+    year = int(today[:4])
+    ok = refresh_calendar_from_api(year)
+    norm = get_month_norm_hours_for_date(today)
+    if ok:
+        flash(f"Календарь {year} обновлён с xmlcalendar.ru. Норма текущего месяца: {int(norm)} ч.", "success")
+    else:
+        flash(f"Не удалось обновить с API. Используется локальный ({int(norm)} ч.)", "error")
+    return redirect(url_for("web.settings"))
