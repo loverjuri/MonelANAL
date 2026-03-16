@@ -53,9 +53,9 @@ def login():
         from config import RECAPTCHA_SITE_KEY
         flash("Ошибка проверки капчи. Попробуйте снова.", "error")
         return render_template("auth/login.html", recaptcha_site_key=RECAPTCHA_SITE_KEY)
-    session = get_session()
+    db_session = get_session()
     try:
-        user = get_user_by_username(session, username)
+        user = get_user_by_username(db_session, username)
         if not user or not check_password_hash(user.password_hash, password):
             from config import RECAPTCHA_SITE_KEY
             flash("Неверный логин или пароль", "error")
@@ -68,7 +68,7 @@ def login():
         session["_2fa_pending"] = True
         return redirect(url_for("web.twofa_verify"))
     finally:
-        session.close()
+        db_session.close()
 
 
 @web_bp.route("/2fa/verify", methods=["GET", "POST"])
@@ -82,10 +82,10 @@ def twofa_verify():
     if len(code) != 6 or not code.isdigit():
         flash("Введите 6-значный код", "error")
         return render_template("auth/2fa_verify.html")
-    session = get_session()
+    db_session = get_session()
     try:
         from db.repositories import get_user_by_id
-        user = get_user_by_id(session, user_id)
+        user = get_user_by_id(db_session, user_id)
         if not user or not user.totp_secret:
             flash("Ошибка сессии. Войдите снова.", "error")
             session.pop("_user_id_for_2fa", None)
@@ -100,7 +100,7 @@ def twofa_verify():
         login_user(user, remember=False)
         return redirect(url_for("web.dashboard"))
     finally:
-        session.close()
+        db_session.close()
 
 
 @web_bp.route("/logout")
