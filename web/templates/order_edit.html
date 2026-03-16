@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Редактирование заказа — MonelANAL{% endblock %}
+{% block content %}
+<h1>Редактирование заказа</h1>
+<div class="card">
+  <form method="post">
+    <div class="form-group">
+      <label for="date">Дата</label>
+      <input id="date" type="date" name="date" value="{{ entry.date }}">
+    </div>
+    <div class="form-group">
+      <label for="description">Описание</label>
+      <input id="description" type="text" name="description" value="{{ entry.description or '' }}">
+    </div>
+    <div class="form-group">
+      <label for="amount">Сумма</label>
+      <input id="amount" type="text" name="amount" value="{{ entry.amount|int }}" inputmode="decimal">
+    </div>
+    <div class="form-group">
+      <label for="status">Статус</label>
+      <select id="status" name="status">
+        <option value="New" {{ 'selected' if entry.status == 'New' }}>Новый</option>
+        <option value="Done" {{ 'selected' if entry.status == 'Done' }}>Выполнен</option>
+        <option value="Cancelled" {{ 'selected' if entry.status == 'Cancelled' }}>Отменён</option>
+      </select>
+    </div>
+    <button type="submit" class="btn">Сохранить</button>
+    <a href="{{ url_for('web.orders') }}" class="btn btn-secondary">Назад</a>
+  </form>
+</div>
+{% endblock %}

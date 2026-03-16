@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Массовый ввод рабочих дней — MonelANAL{% endblock %}
+{% block content %}
+<h1>Массовый ввод рабочих дней</h1>
+<div class="card">
+  <p style="color: var(--text-muted); font-size: 14px;">
+    Введите даты. Форматы:<br>
+    <code>11-13</code> — дни текущего месяца (диапазон)<br>
+    <code>11 12 13</code> — перечисление дней<br>
+    <code>2026-03-11 2026-03-12</code> — полные даты
+  </p>
+  <form method="post">
+    <div class="form-group">
+      <label for="dates">Даты</label>
+      <input id="dates" type="text" name="dates" placeholder="11-13 или 11 12 13" required>
+    </div>
+    <div class="form-group">
+      <label for="hours">Часы за день</label>
+      <input id="hours" type="text" name="hours" value="8" inputmode="decimal">
+    </div>
+    <button type="submit" class="btn">Добавить</button>
+    <a href="{{ url_for('web.worklog') }}" class="btn btn-secondary">Назад</a>
+  </form>
+</div>
+{% endblock %}

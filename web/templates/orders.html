@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Заказы — MonelANAL{% endblock %}
+{% block content %}
+<h1>Заказы (вторая работа)</h1>
+
+<div class="card">
+  <h2>Добавить заказ</h2>
+  <form method="post">
+    <input type="hidden" name="action" value="add">
+    <div class="form-group">
+      <label for="date">Дата</label>
+      <input id="date" type="date" name="date" value="{{ today }}" required>
+    </div>
+    <div class="form-group">
+      <label for="description">Описание</label>
+      <input id="description" type="text" name="description" placeholder="Доставка, ремонт...">
+    </div>
+    <div class="form-group">
+      <label for="amount">Сумма</label>
+      <input id="amount" type="text" name="amount" placeholder="1500" inputmode="decimal" required>
+    </div>
+    <button type="submit" class="btn">Добавить</button>
+  </form>
+</div>
+
+<div style="display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center;">
+  <div class="card" style="flex: 1; min-width: 0; margin-bottom: 0;">
+    <form method="get" action="{{ url_for('web.orders') }}">
+      <label for="month">Месяц</label>
+      <input id="month" type="month" name="month" value="{{ month }}" onchange="this.form.submit()">
+    </form>
+  </div>
+  <a href="{{ url_for('web.orders_add_bulk') }}" class="btn btn-secondary">Массовый ввод</a>
+</div>
+
+<p style="color: var(--text-muted); margin-bottom: 8px;">Итого за месяц: <strong>{{ total|int }}</strong> руб. ({{ entries|length }} заказов)</p>
+
+{% for e in entries %}
+<div class="history-card" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+  <div>
+    <span class="amount">{{ e.date }}</span>
+    <span class="meta">{{ e.description or '—' }} · {{ e.amount|int }} руб.</span>
+  </div>
+  <div style="display: flex; gap: 6px;">
+    <a href="{{ url_for('web.order_edit', order_id=e.order_id) }}" class="btn btn-secondary">Ред.</a>
+    <form method="post" style="margin:0;" onsubmit="return confirm('Удалить?')">
+      <input type="hidden" name="action" value="delete">
+      <input type="hidden" name="order_id" value="{{ e.order_id }}">
+      <button type="submit" class="btn" style="background: var(--danger);">Уд.</button>
+    </form>
+  </div>
+</div>
+{% else %}
+<p style="color: var(--text-muted);">Нет заказов за этот месяц</p>
+{% endfor %}
+{% endblock %}

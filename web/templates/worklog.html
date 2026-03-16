@@ -27,11 +27,14 @@
   </form>
 </div>
 
-<div class="card" style="margin-bottom: 12px;">
-  <form method="get" action="{{ url_for('web.worklog') }}">
-    <label for="month">Месяц</label>
-    <input id="month" type="month" name="month" value="{{ month }}" onchange="this.form.submit()">
-  </form>
+<div style="display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center;">
+  <div class="card" style="flex: 1; min-width: 0; margin-bottom: 0;">
+    <form method="get" action="{{ url_for('web.worklog') }}">
+      <label for="month">Месяц</label>
+      <input id="month" type="month" name="month" value="{{ month }}" onchange="this.form.submit()">
+    </form>
+  </div>
+  <a href="{{ url_for('web.worklog_add_bulk') }}" class="btn btn-secondary">Массовый ввод</a>
 </div>
 
 {% for e in entries %}

@@ -44,6 +44,23 @@ from db.repositories import (
     get_finance_by_id,
     update_finance_entry,
     soft_delete_finance_entry,
+    # Orders
+    get_orders_for_period,
+    get_order,
+    add_order,
+    update_order,
+    delete_order,
+    # Tags
+    get_tags,
+    add_tag,
+    update_tag,
+    delete_tag,
+    # Calculations
+    get_calculations,
+    get_calculation,
+    update_calculation,
+    # Mass operations
+    mass_finance_operations,
 )
 from services.calculations import (
     get_today_msk,
@@ -923,3 +940,268 @@ def export_data():
         )
     finally:
         session.close()
+
+
+# ─── Orders (Second Job) ──────────────────────────────────────
+@web_bp.route("/orders", methods=["GET", "POST"])
+@login_required
+def orders():
+    session = get_session()
+    try:
+        today = get_today_msk()
+        month_arg = request.args.get("month") or today[:7]
+        start = month_arg + "-01"
+        end = month_arg + "-31"
+
+        if request.method == "POST":
+            action = request.form.get("action")
+            if action == "add":
+                date_str = (request.form.get("date") or today)[:10]
+                desc = (request.form.get("description") or "").strip()
+                try:
+                    amount = float((request.form.get("amount") or "0").replace(",", ".").replace(" ", ""))
+                except ValueError:
+                    amount = 0
+                if amount > 0:
+                    add_order(session, date_str, desc, amount)
+                    flash("Заказ добавлен", "success")
+                else:
+                    flash("Введите сумму", "error")
+            elif action == "delete":
+                oid = request.form.get("order_id")
+                if oid:
+                    delete_order(session, oid)
+                    flash("Заказ удалён", "success")
+            return redirect(url_for("web.orders", month=month_arg))
+
+        entries = get_orders_for_period(session, start, end)
+        entries.sort(key=lambda o: o.date, reverse=True)
+        total = sum(o.amount for o in entries)
+        return render_template("orders.html", entries=entries, month=month_arg, today=today, total=total)
+    finally:
+        session.close()
+
+
+@web_bp.route("/orders/edit/<order_id>", methods=["GET", "POST"])
+@login_required
+def order_edit(order_id):
+    session = get_session()
+    try:
+        o = get_order(session, order_id)
+        if not o:
+            flash("Заказ не найден", "error")
+            return redirect(url_for("web.orders"))
+        if request.method == "POST":
+            kwargs = {}
+            for field in ("date", "description", "amount", "status"):
+                v = request.form.get(field)
+                if v is not None:
+                    if field == "amount":
+                        try:
+                            kwargs[field] = float(v.replace(",", ".").replace(" ", ""))
+                        except ValueError:
+                            pass
+                    else:
+                        kwargs[field] = v.strip()
+            if kwargs:
+                update_order(session, order_id, **kwargs)
+                flash("Заказ обновлён", "success")
+            return redirect(url_for("web.orders"))
+        return render_template("order_edit.html", entry=o)
+    finally:
+        session.close()
+
+
+@web_bp.route("/orders/add-bulk", methods=["GET", "POST"])
+@login_required
+def orders_add_bulk():
+    if request.method == "GET":
+        return render_template("orders_add_bulk.html", today=get_today_msk())
+    text = (request.form.get("data") or "").strip()
+    if not text:
+        flash("Введите данные", "error")
+        return redirect(url_for("web.orders_add_bulk"))
+    session = get_session()
+    added = 0
+    try:
+        for line in text.strip().split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split(None, 2)
+            if len(parts) < 3:
+                continue
+            date_raw, amount_raw, desc = parts[0], parts[-1], " ".join(parts[1:-1])
+            try:
+                amount = float(amount_raw.replace(",", ".").replace(" ", ""))
+            except ValueError:
+                try:
+                    amount = float(parts[1].replace(",", ".").replace(" ", ""))
+                    desc = " ".join(parts[2:])
+                except (ValueError, IndexError):
+                    continue
+            if len(date_raw) <= 2:
+                today = get_today_msk()
+                date_str = f"{today[:8]}{int(date_raw):02d}"
+            else:
+                date_str = date_raw[:10]
+            add_order(session, date_str, desc, amount)
+            added += 1
+        flash(f"Добавлено {added} заказов", "success")
+    finally:
+        session.close()
+    return redirect(url_for("web.orders"))
+
+
+# ─── WorkLog bulk add ─────────────────────────────────────────
+@web_bp.route("/worklog/add-bulk", methods=["GET", "POST"])
+@login_required
+def worklog_add_bulk():
+    if request.method == "GET":
+        return render_template("worklog_add_bulk.html", today=get_today_msk())
+    text = (request.form.get("dates") or "").strip()
+    hours_str = (request.form.get("hours") or "8").strip()
+    try:
+        hours = float(hours_str.replace(",", "."))
+    except ValueError:
+        hours = 8
+    if not text:
+        flash("Введите даты", "error")
+        return redirect(url_for("web.worklog_add_bulk"))
+    session = get_session()
+    added = 0
+    try:
+        today = get_today_msk()
+        dates = _parse_date_input(text, today)
+        for date_str in dates:
+            hour_rate = calc_hour_rate_snapshot_for_date(date_str, session)
+            add_work_log(session, date_str, "Main", hours, "Work", hour_rate)
+            added += 1
+        flash(f"Добавлено {added} записей", "success")
+    finally:
+        session.close()
+    return redirect(url_for("web.worklog"))
+
+
+def _parse_date_input(text: str, today: str) -> list[str]:
+    """Parse dates: '11-13' (range), '11 12 13' (list), '2026-03-11' (full)."""
+    text = text.strip()
+    result = []
+    if "-" in text and len(text) <= 5 and text.replace("-", "").isdigit():
+        parts = text.split("-")
+        try:
+            d1, d2 = int(parts[0]), int(parts[1])
+            for d in range(d1, d2 + 1):
+                result.append(f"{today[:8]}{d:02d}")
+        except (ValueError, IndexError):
+            pass
+        return result
+    for part in text.replace(",", " ").split():
+        part = part.strip()
+        if not part:
+            continue
+        if len(part) >= 8 and "-" in part:
+            result.append(part[:10])
+        elif part.isdigit() and len(part) <= 2:
+            result.append(f"{today[:8]}{int(part):02d}")
+    return result
+
+
+# ─── Tags ──────────────────────────────────────────────────────
+@web_bp.route("/tags", methods=["GET", "POST"])
+@login_required
+def tags():
+    session = get_session()
+    try:
+        if request.method == "POST":
+            action = request.form.get("action")
+            if action == "add":
+                name = (request.form.get("name") or "").strip()
+                if name:
+                    add_tag(session, name)
+                    flash("Тег добавлен", "success")
+            elif action == "delete":
+                tid = request.form.get("tag_id")
+                if tid:
+                    delete_tag(session, tid)
+                    flash("Тег удалён", "success")
+            elif action == "rename":
+                tid = request.form.get("tag_id")
+                name = (request.form.get("name") or "").strip()
+                if tid and name:
+                    update_tag(session, tid, name)
+                    flash("Тег переименован", "success")
+            return redirect(url_for("web.tags"))
+        all_tags = get_tags(session)
+        return render_template("tags.html", tags=all_tags)
+    finally:
+        session.close()
+
+
+# ─── Calculations (ЗП) ─────────────────────────────────────────
+@web_bp.route("/calculations")
+@login_required
+def calculations():
+    session = get_session()
+    try:
+        calcs = get_calculations(session)
+        return render_template("calculations.html", calculations=calcs)
+    finally:
+        session.close()
+
+
+@web_bp.route("/calculations/edit/<int:calc_id>", methods=["GET", "POST"])
+@login_required
+def calculation_edit(calc_id):
+    session = get_session()
+    try:
+        c = get_calculation(session, calc_id)
+        if not c:
+            flash("Запись не найдена", "error")
+            return redirect(url_for("web.calculations"))
+        if request.method == "POST":
+            kwargs = {}
+            for field in ("period_start", "period_end", "accrued_salary", "received_salary", "difference"):
+                v = request.form.get(field)
+                if v is not None:
+                    if field in ("accrued_salary", "received_salary", "difference"):
+                        try:
+                            kwargs[field] = float(v.replace(",", ".").replace(" ", ""))
+                        except ValueError:
+                            pass
+                    else:
+                        kwargs[field] = v.strip()
+            if kwargs:
+                update_calculation(session, calc_id, **kwargs)
+                flash("Расчёт обновлён", "success")
+            return redirect(url_for("web.calculations"))
+        return render_template("calculation_edit.html", calc=c)
+    finally:
+        session.close()
+
+
+# ─── Mass operations ───────────────────────────────────────────
+@web_bp.route("/mass-operations", methods=["GET", "POST"])
+@login_required
+def mass_operations():
+    if request.method == "GET":
+        return render_template("mass_operations.html", today=get_today_msk(), categories=EXPENSE_CATEGORIES)
+    session = get_session()
+    try:
+        start = (request.form.get("start") or "")[:10]
+        end = (request.form.get("end") or "")[:10]
+        category = request.form.get("category") or "all"
+        action = request.form.get("mass_action") or "soft_delete"
+        if not start or not end:
+            flash("Укажите период", "error")
+            return redirect(url_for("web.mass_operations"))
+        count = mass_finance_operations(session, start, end, category, action)
+        if action == "soft_delete":
+            flash(f"Удалено {count} записей", "success")
+        else:
+            flash(f"Исключено из бюджета: {count} записей", "success")
+        invalidate_status()
+        invalidate_budget()
+    finally:
+        session.close()
+    return redirect(url_for("web.mass_operations"))

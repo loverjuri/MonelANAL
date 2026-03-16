@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Массовые операции — MonelANAL{% endblock %}
+{% block content %}
+<h1>Массовые операции с финансами</h1>
+<div class="card">
+  <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 12px;">
+    Выберите период и категорию. Операция применится ко всем записям, подходящим под фильтр.
+  </p>
+  <form method="post" onsubmit="return confirm('Вы уверены? Это действие нельзя отменить.');">
+    <div class="form-group">
+      <label for="start">Начало периода</label>
+      <input id="start" type="date" name="start" value="{{ today[:7] }}-01" required>
+    </div>
+    <div class="form-group">
+      <label for="end">Конец периода</label>
+      <input id="end" type="date" name="end" value="{{ today }}" required>
+    </div>
+    <div class="form-group">
+      <label for="category">Категория</label>
+      <select id="category" name="category">
+        <option value="all">Все категории</option>
+        {% for cat in categories %}
+        <option value="{{ cat }}">{{ cat }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="mass_action">Действие</label>
+      <select id="mass_action" name="mass_action">
+        <option value="soft_delete">Удалить (мягкое удаление)</option>
+        <option value="exclude_from_budget">Исключить из бюджета</option>
+      </select>
+    </div>
+    <button type="submit" class="btn" style="background: var(--danger);">Выполнить</button>
+  </form>
+</div>
+{% endblock %}

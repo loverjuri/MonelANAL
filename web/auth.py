@@ -1,6 +1,8 @@
-"""Authentication: login, logout, 2FA."""
+"""Authentication: login, logout, 2FA, Telegram Web App auto-login."""
 import hashlib
 import hmac
+import json
+import logging
 import time
 import requests
 from flask import render_template, redirect, url_for, request, flash, jsonify
@@ -14,9 +16,11 @@ from werkzeug.security import check_password_hash
 import pyotp
 
 from . import web_bp
-from db.models import get_session
-from db.repositories import get_user_by_username, get_user_by_telegram_id
+from db.models import get_session, User
+from db.repositories import get_user_by_username, get_user_by_telegram_id, get_user_by_id, update_user
 from config import RECAPTCHA_SECRET_KEY, SECRET_KEY, BOT_TOKEN
+
+log = logging.getLogger(__name__)
 
 
 def verify_telegram_login(auth_data: dict) -> bool:
@@ -160,13 +164,23 @@ def twofa_verify():
 
 
 def _do_telegram_login(telegram_id: str):
-    """Find user by telegram_id and log in."""
+    """Find user by telegram_id and log in. Auto-links if single-user system."""
     db_session = get_session()
     try:
         user = get_user_by_telegram_id(db_session, str(telegram_id))
         if not user:
-            return None
+            # Single-user auto-link: if only one user exists and has no telegram link, bind now
+            all_users = db_session.query(User).all()
+            if len(all_users) == 1 and not all_users[0].telegram_user_id:
+                all_users[0].telegram_user_id = str(telegram_id)
+                db_session.commit()
+                user = all_users[0]
+                log.info("Auto-linked user %s to telegram_id=%s", user.username, telegram_id)
+            else:
+                log.warning("Telegram login failed: no user for telegram_id=%s", telegram_id)
+                return None
         login_user(user, remember=True)
+        log.info("Telegram login OK: user=%s telegram_id=%s", user.username, telegram_id)
         return True
     finally:
         db_session.close()
@@ -176,15 +190,22 @@ def _do_telegram_login(telegram_id: str):
 def telegram_login():
     """Callback for Telegram Login Widget (GET) or Web App auto-login (POST with initData)."""
     if current_user.is_authenticated:
+        if request.method == "POST":
+            return jsonify({"ok": True, "redirect": url_for("web.dashboard", _external=False)})
         return redirect(url_for("web.dashboard"))
     if request.method == "POST":
-        init_data = request.form.get("initData") or (request.get_json() or {}).get("initData") or ""
+        content_type = request.content_type or ""
+        if "json" in content_type:
+            init_data = (request.get_json(silent=True) or {}).get("initData", "")
+        else:
+            init_data = request.form.get("initData", "")
         if not init_data:
+            log.warning("telegram-login POST: no initData (ct=%s)", content_type)
             return jsonify({"ok": False, "error": "No initData"}), 400
         auth_data = verify_telegram_webapp_init_data(init_data)
         if not auth_data:
+            log.warning("telegram-login POST: initData validation failed (bot_token=%s)", bool(BOT_TOKEN))
             return jsonify({"ok": False, "error": "Invalid initData"}), 403
-        import json
         telegram_id = auth_data.get("id")
         if not telegram_id and auth_data.get("user"):
             try:
@@ -193,10 +214,12 @@ def telegram_login():
             except (json.JSONDecodeError, TypeError):
                 pass
         if not telegram_id:
+            log.warning("telegram-login POST: no user id in auth_data keys=%s", list(auth_data.keys()))
             return jsonify({"ok": False, "error": "No user id"}), 400
         if _do_telegram_login(str(telegram_id)):
             return jsonify({"ok": True, "redirect": url_for("web.dashboard", _external=False)})
         return jsonify({"ok": False, "error": "Account not linked"}), 403
+    # GET — Telegram Login Widget callback
     auth_data = dict(request.args)
     if not verify_telegram_login(auth_data):
         flash("Ошибка авторизации через Telegram. Попробуйте снова.", "error")

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Расчёты ЗП — MonelANAL{% endblock %}
+{% block content %}
+<h1>Расчёты ЗП</h1>
+
+{% for c in calculations %}
+<div class="history-card" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+  <div>
+    <span class="amount">{{ c.period_start }} — {{ c.period_end }}</span>
+    <span class="meta">
+      Начислено: {{ (c.accrued_salary or 0)|int }} руб.
+      · Получено: {{ (c.received_salary or 0)|int }} руб.
+      · Разница: {{ (c.difference or 0)|int }} руб.
+    </span>
+  </div>
+  <a href="{{ url_for('web.calculation_edit', calc_id=c.id) }}" class="btn btn-secondary">Ред.</a>
+</div>
+{% else %}
+<p style="color: var(--text-muted);">Нет расчётов</p>
+{% endfor %}
+{% endblock %}

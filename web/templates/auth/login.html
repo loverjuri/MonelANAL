@@ -50,16 +50,21 @@
   (function() {
     var tg = window.Telegram && window.Telegram.WebApp;
     if (tg && tg.initData) {
-      fetch("{{ url_for('web.telegram_login', _external=True) }}", {
+      document.querySelector('.container').innerHTML = '<h1 style="text-align:center;margin-top:60px;">Вход...</h1>';
+      fetch("{{ url_for('web.telegram_login') }}", {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ initData: tg.initData }),
-        credentials: 'same-origin'
+        credentials: 'include'
       }).then(function(r) { return r.json(); }).then(function(d) {
         if (d.ok && d.redirect) {
           window.location.href = d.redirect;
+        } else {
+          document.querySelector('.container').innerHTML = '<h1 style="text-align:center;margin-top:60px;">Ошибка входа</h1><p style="text-align:center;color:var(--text-muted);">' + (d.error || 'Неизвестная ошибка') + '</p>';
         }
-      }).catch(function() {});
+      }).catch(function(e) {
+        document.querySelector('.container').innerHTML = '<h1 style="text-align:center;margin-top:60px;">Ошибка сети</h1>';
+      });
     }
   })();
   </script>

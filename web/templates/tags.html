@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Теги — MonelANAL{% endblock %}
+{% block content %}
+<h1>Теги</h1>
+
+<div class="card">
+  <h2>Добавить тег</h2>
+  <form method="post" style="display: flex; gap: 8px; align-items: flex-end;">
+    <input type="hidden" name="action" value="add">
+    <div class="form-group" style="flex: 1; margin-bottom: 0;">
+      <input type="text" name="name" placeholder="Название тега" required>
+    </div>
+    <button type="submit" class="btn">Добавить</button>
+  </form>
+</div>
+
+{% for t in tags %}
+<div class="history-card" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+  <div>
+    <span class="amount">{{ t.name }}</span>
+  </div>
+  <div style="display: flex; gap: 6px;">
+    <form method="post" style="display: flex; gap: 4px; margin: 0; align-items: center;">
+      <input type="hidden" name="action" value="rename">
+      <input type="hidden" name="tag_id" value="{{ t.id }}">
+      <input type="text" name="name" value="{{ t.name }}" style="width: 100px;">
+      <button type="submit" class="btn btn-secondary" style="padding: 6px 10px;">Сохр.</button>
+    </form>
+    <form method="post" style="margin:0;" onsubmit="return confirm('Удалить тег?')">
+      <input type="hidden" name="action" value="delete">
+      <input type="hidden" name="tag_id" value="{{ t.id }}">
+      <button type="submit" class="btn" style="background: var(--danger); padding: 6px 10px;">Уд.</button>
+    </form>
+  </div>
+</div>
+{% else %}
+<p style="color: var(--text-muted);">Нет тегов</p>
+{% endfor %}
+{% endblock %}

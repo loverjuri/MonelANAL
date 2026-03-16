@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Редактирование расчёта — MonelANAL{% endblock %}
+{% block content %}
+<h1>Редактирование расчёта</h1>
+<div class="card">
+  <form method="post">
+    <div class="form-group">
+      <label for="period_start">Начало периода</label>
+      <input id="period_start" type="date" name="period_start" value="{{ calc.period_start or '' }}">
+    </div>
+    <div class="form-group">
+      <label for="period_end">Конец периода</label>
+      <input id="period_end" type="date" name="period_end" value="{{ calc.period_end or '' }}">
+    </div>
+    <div class="form-group">
+      <label for="accrued_salary">Начислено</label>
+      <input id="accrued_salary" type="text" name="accrued_salary" value="{{ (calc.accrued_salary or 0)|int }}" inputmode="decimal">
+    </div>
+    <div class="form-group">
+      <label for="received_salary">Получено</label>
+      <input id="received_salary" type="text" name="received_salary" value="{{ (calc.received_salary or 0)|int }}" inputmode="decimal">
+    </div>
+    <div class="form-group">
+      <label for="difference">Разница</label>
+      <input id="difference" type="text" name="difference" value="{{ (calc.difference or 0)|int }}" inputmode="decimal">
+    </div>
+    <button type="submit" class="btn">Сохранить</button>
+    <a href="{{ url_for('web.calculations') }}" class="btn btn-secondary">Назад</a>
+  </form>
+</div>
+{% endblock %}

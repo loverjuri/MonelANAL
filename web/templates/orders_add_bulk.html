@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Массовый ввод заказов — MonelANAL{% endblock %}
+{% block content %}
+<h1>Массовый ввод заказов</h1>
+<div class="card">
+  <p style="color: var(--text-muted); font-size: 14px;">
+    Каждая строка: <code>дата описание сумма</code><br>
+    Примеры:<br>
+    <code>11 Доставка 1500</code><br>
+    <code>12 Ремонт 3000</code><br>
+    <code>2026-03-13 Консультация 500</code>
+  </p>
+  <form method="post">
+    <div class="form-group">
+      <label for="data">Заказы</label>
+      <textarea id="data" name="data" rows="8" placeholder="11 Доставка 1500&#10;12 Ремонт 3000" style="width: 100%; font-family: monospace;"></textarea>
+    </div>
+    <button type="submit" class="btn">Добавить</button>
+    <a href="{{ url_for('web.orders') }}" class="btn btn-secondary">Назад</a>
+  </form>
+</div>
+{% endblock %}
