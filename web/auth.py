@@ -1,6 +1,6 @@
 """Authentication: login, logout, 2FA."""
 import requests
-from flask import render_template, redirect, url_for, request, flash
+from flask import render_template, redirect, url_for, request, flash, session
 from extensions import limiter
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import check_password_hash
@@ -61,8 +61,8 @@ def login():
             from config import RECAPTCHA_SITE_KEY
             flash("2FA не настроен. Запустите create_web_user.py заново.", "error")
             return render_template("auth/login.html", recaptcha_site_key=RECAPTCHA_SITE_KEY)
-        request.session["_user_id_for_2fa"] = user.id
-        request.session["_2fa_pending"] = True
+        session["_user_id_for_2fa"] = user.id
+        session["_2fa_pending"] = True
         return redirect(url_for("web.twofa_verify"))
     finally:
         session.close()
@@ -70,7 +70,7 @@ def login():
 
 @web_bp.route("/2fa/verify", methods=["GET", "POST"])
 def twofa_verify():
-    user_id = request.session.get("_user_id_for_2fa")
+    user_id = session.get("_user_id_for_2fa")
     if not user_id:
         return redirect(url_for("web.login"))
     if request.method == "GET":
@@ -85,15 +85,15 @@ def twofa_verify():
         user = get_user_by_id(session, user_id)
         if not user or not user.totp_secret:
             flash("Ошибка сессии. Войдите снова.", "error")
-            request.session.pop("_user_id_for_2fa", None)
-            request.session.pop("_2fa_pending", None)
+            session.pop("_user_id_for_2fa", None)
+            session.pop("_2fa_pending", None)
             return redirect(url_for("web.login"))
         totp = pyotp.TOTP(user.totp_secret)
         if not totp.verify(code, valid_window=1):
             flash("Неверный код", "error")
             return render_template("auth/2fa_verify.html")
-        request.session.pop("_user_id_for_2fa", None)
-        request.session.pop("_2fa_pending", None)
+        session.pop("_user_id_for_2fa", None)
+        session.pop("_2fa_pending", None)
         login_user(user, remember=False)
         return redirect(url_for("web.dashboard"))
     finally:
