@@ -58,9 +58,28 @@ from db.repositories import (
     # Calculations
     get_calculations,
     get_calculation,
+    add_calculation,
     update_calculation,
     # Mass operations
     mass_finance_operations,
+    # Goals extended
+    get_archived_goals,
+    archive_goal,
+    transfer_between_goals,
+    # Debts extended
+    update_debt_payment,
+    delete_debt_payment,
+    # Subscriptions extended
+    delete_subscription,
+    get_inactive_subscriptions,
+    get_overdue_subscriptions,
+    # Templates extended
+    delete_template,
+    # Categories
+    get_root_categories,
+    add_category,
+    # Search
+    search_finance,
 )
 from services.calculations import (
     get_today_msk,
@@ -75,9 +94,12 @@ from services.budget import (
     get_month_range,
     get_forecast_end_of_month,
     suggest_plan_from_history,
+    get_5030_20_hint,
 )
-from services.gamification import get_streak, ACHIEVEMENTS
-from services.reports import get_period_range
+from services.gamification import get_streak, check_achievements, ACHIEVEMENTS
+from services.goals import get_goal_pace_hint, get_cushion_target, get_goal_icon
+from services.recommendations import get_template_advice, generate_daily_digest
+from services.reports import get_period_range, get_top_expenses, get_daily_average, compare_with_previous
 from services.excel_import import parse_alfa_bank
 from .cache_helpers import (
     get_cached_status,
@@ -150,7 +172,10 @@ def dashboard():
     session = get_session()
     try:
         recent = get_finance_history(session, limit=10)
-        return render_template("dashboard.html", status=data, recent=recent)
+        advice = get_template_advice(session)
+        digest = generate_daily_digest(session)
+        return render_template("dashboard.html", status=data, recent=recent,
+                               advice=advice, digest=digest)
     finally:
         session.close()
 
@@ -299,6 +324,7 @@ def budget():
             set_cached_budget(month_year, st)
         forecast = get_forecast_end_of_month(session)
         limits = st.get("limits", {})
+        hint_5030 = get_5030_20_hint(session)
         return render_template(
             "budget.html",
             budget=st,
@@ -306,6 +332,7 @@ def budget():
             month_year=month_year,
             categories=EXPENSE_CATEGORIES,
             limits=limits,
+            hint_5030=hint_5030,
         )
     finally:
         session.close()
@@ -378,8 +405,28 @@ def goals():
                         flash("Цель обновлена", "success")
                 return redirect(url_for("web.goals"))
 
+            if action == "transfer":
+                from_id = request.form.get("from_goal_id")
+                to_id = request.form.get("to_goal_id")
+                amt_str = request.form.get("amount") or "0"
+                try:
+                    amt = float(amt_str.replace(",", "."))
+                    if amt > 0 and transfer_between_goals(session, from_id, to_id, amt):
+                        flash("Перевод выполнен", "success")
+                    else:
+                        flash("Ошибка перевода", "error")
+                except ValueError:
+                    flash("Некорректная сумма", "error")
+                return redirect(url_for("web.goals"))
+
         goals_list = get_active_goals(session)
-        return render_template("goals.html", goals=goals_list)
+        archived = get_archived_goals(session)
+        cushion = get_cushion_target(session)
+        pace_hints = {}
+        for g in goals_list:
+            pace_hints[g.id] = get_goal_pace_hint(g)
+        return render_template("goals.html", goals=goals_list, archived=archived,
+                               cushion=int(cushion), pace_hints=pace_hints)
     finally:
         session.close()
 
@@ -472,7 +519,7 @@ def debts():
         session.close()
 
 
-@web_bp.route("/debts/edit/<debt_id>")
+@web_bp.route("/debts/edit/<debt_id>", methods=["GET", "POST"])
 @login_required
 def debt_edit_form(debt_id):
     session = get_session()
@@ -481,7 +528,26 @@ def debt_edit_form(debt_id):
         if not d:
             flash("Долг не найден", "error")
             return redirect(url_for("web.debts"))
-        return render_template("debt_edit.html", debt=d)
+        if request.method == "POST":
+            action = request.form.get("action")
+            if action == "delete_payment":
+                pid = request.form.get("payment_id")
+                if pid and delete_debt_payment(session, pid):
+                    flash("Платёж удалён", "success")
+                return redirect(url_for("web.debt_edit_form", debt_id=debt_id))
+            if action == "edit_payment":
+                pid = request.form.get("payment_id")
+                amt_str = request.form.get("amount") or ""
+                date_str = request.form.get("date") or None
+                try:
+                    amt = float(amt_str.replace(",", ".")) if amt_str else None
+                except ValueError:
+                    amt = None
+                if pid and update_debt_payment(session, pid, amount=amt, date=date_str):
+                    flash("Платёж обновлён", "success")
+                return redirect(url_for("web.debt_edit_form", debt_id=debt_id))
+        payments = get_debt_payments(session, debt_id)
+        return render_template("debt_edit.html", debt=d, payments=payments)
     finally:
         session.close()
 
@@ -543,9 +609,23 @@ def subscriptions():
                     flash("Дата следующего платежа перенесена", "success")
                 else:
                     flash("Подписка не найдена", "error")
+            elif action == "delete":
+                sub_id = request.form.get("subscription_id")
+                if sub_id and delete_subscription(session, sub_id):
+                    flash("Подписка удалена", "success")
+                else:
+                    flash("Подписка не найдена", "error")
+            elif action == "reactivate":
+                sub_id = request.form.get("subscription_id")
+                if sub_id and get_subscription(session, sub_id):
+                    update_subscription(session, sub_id, is_active=True)
+                    flash("Подписка возобновлена", "success")
             return redirect(url_for("web.subscriptions"))
         subs = get_active_subscriptions(session)
-        return render_template("subscriptions.html", subscriptions=subs, now=get_today_msk())
+        inactive = get_inactive_subscriptions(session)
+        overdue = get_overdue_subscriptions(session)
+        return render_template("subscriptions.html", subscriptions=subs, inactive=inactive,
+                               overdue=overdue, now=get_today_msk(), categories=EXPENSE_CATEGORIES)
     finally:
         session.close()
 
@@ -583,8 +663,13 @@ def analytics():
                 cat = r.category or "Без категории"
                 by_cat[cat] = by_cat.get(cat, 0) + amt
         chart_data = [{"category": k, "amount": v} for k, v in sorted(by_cat.items(), key=lambda x: -x[1])]
+        top_expenses = get_top_expenses(session, start, end, limit=5)
+        daily_avg = get_daily_average(session, start, end)
+        comparison = compare_with_previous(session, period)
         return render_template("analytics.html", period=period, chart_data=chart_data,
-                               income=int(income), expense=int(expense), balance=int(income - expense))
+                               income=int(income), expense=int(expense), balance=int(income - expense),
+                               start=start, end=end, top_expenses=top_expenses,
+                               daily_avg=int(daily_avg), comparison=comparison)
     finally:
         session.close()
 
@@ -636,23 +721,37 @@ def history():
         search_q = (request.args.get("q") or "").strip()
         category_filter = (request.args.get("category") or "").strip()
 
-        q = session.query(Finance).filter(Finance.is_deleted == False)
-        if search_q:
-            from sqlalchemy import or_
-            text_filt = or_(
-                Finance.comment.contains(search_q),
-                Finance.category.contains(search_q),
-                Finance.type.contains(search_q)
-            )
+        if search_q and not category_filter:
+            all_results = search_finance(session, search_q, limit=500)
             try:
                 amount_val = float(search_q.replace(",", "."))
-                q = q.filter(or_(text_filt, Finance.amount == amount_val))
+                extra = session.query(Finance).filter(
+                    Finance.is_deleted == False, Finance.amount == amount_val
+                ).order_by(Finance.date.desc()).limit(50).all()
+                seen = {r.id for r in all_results}
+                all_results.extend(r for r in extra if r.id not in seen)
             except ValueError:
-                q = q.filter(text_filt)
-        if category_filter:
-            q = q.filter(Finance.category == category_filter)
-        q = q.order_by(Finance.date.desc(), Finance.id.desc())
-        rows = q.offset(offset).limit(per_page + 1).all()
+                pass
+            all_results.sort(key=lambda r: (r.date or "", r.id or 0), reverse=True)
+            rows = all_results[offset:offset + per_page + 1]
+        else:
+            q = session.query(Finance).filter(Finance.is_deleted == False)
+            if search_q:
+                from sqlalchemy import or_
+                text_filt = or_(
+                    Finance.comment.contains(search_q),
+                    Finance.category.contains(search_q),
+                    Finance.type.contains(search_q)
+                )
+                try:
+                    amount_val = float(search_q.replace(",", "."))
+                    q = q.filter(or_(text_filt, Finance.amount == amount_val))
+                except ValueError:
+                    q = q.filter(text_filt)
+            if category_filter:
+                q = q.filter(Finance.category == category_filter)
+            q = q.order_by(Finance.date.desc(), Finance.id.desc())
+            rows = q.offset(offset).limit(per_page + 1).all()
         has_more = len(rows) > per_page
         rows = rows[:per_page]
 
@@ -720,6 +819,12 @@ def templates_list():
                     update_template(session, template_id, **kwargs)
                     flash("Шаблон обновлён", "success")
                 return redirect(url_for("web.templates_list"))
+            elif action == "delete":
+                template_id = request.form.get("template_id")
+                if template_id and delete_template(session, template_id):
+                    flash("Шаблон удалён", "success")
+                else:
+                    flash("Шаблон не найден", "error")
             return redirect(url_for("web.templates_list"))
         templates = get_templates(session)
         return render_template("templates.html", templates=templates, categories=EXPENSE_CATEGORIES)
@@ -851,8 +956,21 @@ def more():
 def settings():
     session = get_session()
     try:
-        config_keys = ["FixedSalary", "PayDay1", "PayDay2", "WorkHoursNorm"]
+        config_keys = ["FixedSalary", "PayDay1", "PayDay2", "WorkHoursNorm",
+                        "LargeExpenseThreshold", "QuietHoursStart", "QuietHoursEnd", "ChatID"]
         if request.method == "POST":
+            action = request.form.get("action")
+            if action == "add_category":
+                cat_name = (request.form.get("category_name") or "").strip()
+                if cat_name:
+                    add_category(session, cat_name)
+                    flash(f"Категория «{cat_name}» добавлена", "success")
+                return redirect(url_for("web.settings"))
+            if action == "delete_all":
+                from services.backup import delete_all_data
+                delete_all_data(session)
+                flash("Все данные удалены", "success")
+                return redirect(url_for("web.settings"))
             for k in config_keys:
                 v = request.form.get(k)
                 if v is not None:
@@ -860,7 +978,21 @@ def settings():
             flash("Настройки сохранены", "success")
             return redirect(url_for("web.settings"))
         config = {k: get_config_param(session, k) for k in config_keys}
-        return render_template("settings.html", config=config)
+        categories = get_root_categories(session)
+        return render_template("settings.html", config=config, categories=categories)
+    finally:
+        session.close()
+
+
+@web_bp.route("/settings/backup")
+@login_required
+def settings_backup():
+    session = get_session()
+    try:
+        from services.backup import create_backup_json
+        path = create_backup_json(session)
+        return send_file(path, as_attachment=True, download_name="monel_backup.json",
+                         mimetype="application/json")
     finally:
         session.close()
 
@@ -870,9 +1002,13 @@ def settings():
 def achievements():
     session = get_session()
     try:
+        check_achievements(session)
         unlocked = get_achievements(session)
+        unlocked_codes = {a.code for a in unlocked if hasattr(a, 'code')}
         streak = get_streak(session)
-        return render_template("achievements.html", achievements=unlocked, streak=streak, ACHIEVEMENTS=ACHIEVEMENTS)
+        return render_template("achievements.html", achievements=unlocked,
+                               unlocked_codes=unlocked_codes, streak=streak,
+                               ACHIEVEMENTS=ACHIEVEMENTS)
     finally:
         session.close()
 
@@ -1139,13 +1275,30 @@ def tags():
 
 
 # ─── Calculations (ЗП) ─────────────────────────────────────────
-@web_bp.route("/calculations")
+@web_bp.route("/calculations", methods=["GET", "POST"])
 @login_required
 def calculations():
     session = get_session()
     try:
+        if request.method == "POST":
+            action = request.form.get("action")
+            if action == "add":
+                ps = (request.form.get("period_start") or "").strip()[:10]
+                pe = (request.form.get("period_end") or "").strip()[:10]
+                try:
+                    accrued = float((request.form.get("accrued_salary") or "0").replace(",", "."))
+                    received = float((request.form.get("received_salary") or "0").replace(",", "."))
+                except ValueError:
+                    flash("Некорректная сумма", "error")
+                    return redirect(url_for("web.calculations"))
+                if ps and pe:
+                    add_calculation(session, ps, pe, accrued, received)
+                    flash("Расчёт добавлен", "success")
+                else:
+                    flash("Укажите период", "error")
+            return redirect(url_for("web.calculations"))
         calcs = get_calculations(session)
-        return render_template("calculations.html", calculations=calcs)
+        return render_template("calculations.html", calculations=calcs, today=get_today_msk())
     finally:
         session.close()
 

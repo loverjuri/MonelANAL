@@ -61,6 +61,21 @@
   <p>Следующая выплата: {{ status.next_pay }}</p>
   <p>Долги: я должен {{ status.debt_owe }}, мне должны {{ status.debt_lent }}</p>
 </div>
+
+{% if advice or digest %}
+<div class="card" style="background: rgba(88,166,255,0.06); border-color: var(--accent);">
+  <h2>Рекомендации</h2>
+  {% if advice %}
+  {% for a in advice %}
+  <p style="margin: 4px 0; font-size: 14px;">• {{ a }}</p>
+  {% endfor %}
+  {% endif %}
+  {% if digest %}
+  <pre style="white-space: pre-wrap; font-size: 13px; color: var(--text-muted); margin: 8px 0 0;">{{ digest }}</pre>
+  {% endif %}
+</div>
+{% endif %}
+
 <div class="card">
   <h2>Последние операции</h2>
   <p class="form-hint">Нажмите для быстрого повтора расхода</p>

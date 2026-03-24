@@ -1013,6 +1013,20 @@ def get_calculation(session: Session, calc_id: int):
     return session.query(Calculation).filter(Calculation.id == calc_id).first()
 
 
+def add_calculation(session: Session, period_start: str, period_end: str,
+                    accrued_salary: float, received_salary: float) -> int:
+    c = Calculation(
+        period_start=period_start,
+        period_end=period_end,
+        accrued_salary=accrued_salary,
+        received_salary=received_salary,
+        difference=accrued_salary - received_salary,
+    )
+    session.add(c)
+    session.commit()
+    return c.id
+
+
 def update_calculation(session: Session, calc_id: int, **kwargs) -> bool:
     c = get_calculation(session, calc_id)
     if not c:

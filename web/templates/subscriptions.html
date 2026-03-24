@@ -24,6 +24,12 @@
       </select>
     </div>
     <div class="form-group">
+      <label for="category">Категория</label>
+      <select id="category" name="category">
+        {% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
       <label for="next_date">След. дата платежа</label>
       <input id="next_date" type="date" name="next_date" value="{{ now or '' }}" required>
     </div>
@@ -31,26 +37,70 @@
   </form>
 </div>
 
+{% if overdue %}
+<h2 style="color: var(--error);">Просроченные</h2>
+{% for s in overdue %}
+<div class="card" style="border-color: var(--error);">
+  <p><strong>{{ s.name }}</strong> — {{ s.amount | int }} руб.</p>
+  <p style="color: var(--error);">Просрочена: {{ s.next_date }}</p>
+  <div style="margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap;">
+    <form method="post" style="display:inline;">
+      <input type="hidden" name="action" value="advance">
+      <input type="hidden" name="subscription_id" value="{{ s.id }}">
+      <button type="submit" class="btn btn-secondary">Оплатил</button>
+    </form>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
 {% for s in subscriptions %}
 <div class="card">
   <p><strong>{{ s.name }}</strong> — {{ s.amount | int }} руб.</p>
-  <p>{{ 'еженедельно' if s.cycle == 'weekly' else 'ежемесячно' if s.cycle == 'monthly' else 'ежегодно' }} · След. дата: {{ s.next_date }}</p>
+  <p>{{ 'еженедельно' if s.cycle == 'weekly' else 'ежемесячно' if s.cycle == 'monthly' else 'ежегодно' }} · След. дата: {{ s.next_date }}{% if s.category %} · {{ s.category }}{% endif %}</p>
 
   <div style="margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
     <a href="{{ url_for('web.subscription_edit_form', sub_id=s.id) }}" class="btn btn-secondary">Редактировать</a>
     <form method="post" style="display:inline;">
       <input type="hidden" name="action" value="advance">
       <input type="hidden" name="subscription_id" value="{{ s.id }}">
-      <button type="submit" class="btn btn-secondary">Оплатил (перенести дату)</button>
+      <button type="submit" class="btn btn-secondary">Оплатил</button>
     </form>
     <form method="post" style="display:inline;">
       <input type="hidden" name="action" value="pause">
       <input type="hidden" name="subscription_id" value="{{ s.id }}">
       <button type="submit" class="btn btn-secondary">Приостановить</button>
     </form>
+    <form method="post" style="display:inline;">
+      <input type="hidden" name="action" value="delete">
+      <input type="hidden" name="subscription_id" value="{{ s.id }}">
+      <button type="submit" class="btn btn-secondary" style="color: var(--danger);" onclick="return confirm('Удалить подписку?')">Удалить</button>
+    </form>
   </div>
 </div>
 {% else %}
 <p style="color: var(--text-muted);">Нет активных подписок</p>
 {% endfor %}
+
+{% if inactive %}
+<h2 style="margin-top: 24px;">Приостановленные</h2>
+{% for s in inactive %}
+<div class="card" style="opacity: 0.65;">
+  <p><strong>{{ s.name }}</strong> — {{ s.amount | int }} руб.</p>
+  <p style="color: var(--text-muted);">{{ 'еженедельно' if s.cycle == 'weekly' else 'ежемесячно' if s.cycle == 'monthly' else 'ежегодно' }}</p>
+  <div style="margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap;">
+    <form method="post" style="display:inline;">
+      <input type="hidden" name="action" value="reactivate">
+      <input type="hidden" name="subscription_id" value="{{ s.id }}">
+      <button type="submit" class="btn btn-secondary">Возобновить</button>
+    </form>
+    <form method="post" style="display:inline;">
+      <input type="hidden" name="action" value="delete">
+      <input type="hidden" name="subscription_id" value="{{ s.id }}">
+      <button type="submit" class="btn btn-secondary" style="color: var(--danger);" onclick="return confirm('Удалить?')">Удалить</button>
+    </form>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
 {% endblock %}

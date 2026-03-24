@@ -3,6 +3,10 @@
 {% block content %}
 <h1>Цели накоплений</h1>
 
+<div class="card" style="background: rgba(88,166,255,0.08); border-color: var(--accent);">
+  <p style="margin: 0;"><strong>Подушка безопасности:</strong> рекомендуемая цель — {{ cushion }} руб. (3-6 мес. расходов)</p>
+</div>
+
 <div class="card">
   <h2>Добавить цель</h2>
   <form method="post">
@@ -32,6 +36,7 @@
     <div class="progress-bar-fill {{ 'done' if pct >= 100 else 'warn' if pct >= 80 else '' }}" style="width: {{ [pct, 100] | min }}%"></div>
   </div>
   {% if g.deadline %}<p>Дедлайн: {{ g.deadline }}</p>{% endif %}
+  <p style="color: var(--text-muted); font-size: 13px;">{{ pace_hints.get(g.id, '') }}</p>
 
   <form method="post" style="display: flex; gap: 8px; margin-top: 12px;">
     <input type="hidden" name="action" value="fund">
@@ -52,4 +57,44 @@
 {% else %}
 <p style="color: var(--text-muted);">Нет активных целей</p>
 {% endfor %}
+
+{% if goals | length > 1 %}
+<div class="card">
+  <h2>Перевод между целями</h2>
+  <form method="post">
+    <input type="hidden" name="action" value="transfer">
+    <div class="form-group">
+      <label for="from_goal_id">Из цели</label>
+      <select id="from_goal_id" name="from_goal_id" required>
+        {% for g in goals %}<option value="{{ g.id }}">{{ g.name }} ({{ g.current_amount | int }} руб.)</option>{% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="to_goal_id">В цель</label>
+      <select id="to_goal_id" name="to_goal_id" required>
+        {% for g in goals %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="transfer_amount">Сумма</label>
+      <input id="transfer_amount" type="text" name="amount" placeholder="1000" required inputmode="decimal">
+    </div>
+    <button type="submit" class="btn btn-secondary">Перевести</button>
+  </form>
+</div>
+{% endif %}
+
+{% if archived %}
+<h2 style="margin-top: 24px;">Архив</h2>
+{% for g in archived %}
+<div class="card" style="opacity: 0.65;">
+  <p><strong>{{ g.name }}</strong></p>
+  {% set pct = (g.current_amount / g.target_amount * 100) | int if g.target_amount else 0 %}
+  <p>{{ g.current_amount | int }} / {{ g.target_amount | int }} руб. ({{ pct }}%)</p>
+  <div class="progress-bar">
+    <div class="progress-bar-fill {{ 'done' if pct >= 100 else '' }}" style="width: {{ [pct, 100] | min }}%"></div>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
 {% endblock %}

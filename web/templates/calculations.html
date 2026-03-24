@@ -3,6 +3,30 @@
 {% block content %}
 <h1>Расчёты ЗП</h1>
 
+<div class="card">
+  <h2>Добавить расчёт</h2>
+  <form method="post">
+    <input type="hidden" name="action" value="add">
+    <div class="form-group">
+      <label for="period_start">Начало периода</label>
+      <input id="period_start" type="date" name="period_start" value="{{ today }}" required>
+    </div>
+    <div class="form-group">
+      <label for="period_end">Конец периода</label>
+      <input id="period_end" type="date" name="period_end" value="{{ today }}" required>
+    </div>
+    <div class="form-group">
+      <label for="accrued_salary">Начислено (руб.)</label>
+      <input id="accrued_salary" type="text" name="accrued_salary" placeholder="50000" required inputmode="decimal">
+    </div>
+    <div class="form-group">
+      <label for="received_salary">Получено (руб.)</label>
+      <input id="received_salary" type="text" name="received_salary" placeholder="43500" required inputmode="decimal">
+    </div>
+    <button type="submit" class="btn">Добавить</button>
+  </form>
+</div>
+
 {% for c in calculations %}
 <div class="history-card" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
   <div>

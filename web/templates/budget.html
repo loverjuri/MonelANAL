@@ -16,6 +16,13 @@
   <p><strong>Остаток: {{ (budget.total_limit - budget.total_spent) | int }} руб.</strong></p>
 </div>
 
+{% if hint_5030 %}
+<div class="card" style="background: rgba(88,166,255,0.08); border-color: var(--accent);">
+  <h2>Правило 50/30/20</h2>
+  <pre style="white-space: pre-wrap; font-size: 13px; color: var(--text-muted); margin: 0;">{{ hint_5030 }}</pre>
+</div>
+{% endif %}
+
 {% if budget.limits %}
 <div class="card">
   <h2>По категориям</h2>

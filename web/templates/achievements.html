@@ -5,13 +5,17 @@
 <div class="card">
   <p><strong>Streak:</strong> {{ streak }} дн. подряд</p>
 </div>
-<h2>Разблокировано</h2>
-{% for a in achievements %}
-<div class="card">
-  <p>🏆 {{ a.name }}</p>
-  <p style="color: var(--text-muted);">{{ a.description }}</p>
+
+<h2>Все достижения</h2>
+{% for code, info in ACHIEVEMENTS.items() %}
+<div class="card" style="{{ '' if code in unlocked_codes else 'opacity: 0.45;' }}">
+  <p>{{ '🏆' if code in unlocked_codes else '🔒' }} {{ info.name }}</p>
+  <p style="color: var(--text-muted);">{{ info.desc }}</p>
+  {% if code in unlocked_codes %}
+  <p style="color: var(--success); font-size: 12px;">Разблокировано</p>
+  {% else %}
+  <p style="color: var(--text-muted); font-size: 12px;">Не разблокировано</p>
+  {% endif %}
 </div>
-{% else %}
-<p style="color: var(--text-muted);">Пока нет достижений</p>
 {% endfor %}
 {% endblock %}

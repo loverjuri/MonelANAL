@@ -12,6 +12,7 @@
 </div>
 <form method="post">
   <div class="card">
+    <h2>Основные</h2>
     <div class="form-group">
       <label for="FixedSalary">Фикс. ЗП (руб.)</label>
       <input id="FixedSalary" type="text" name="FixedSalary" value="{{ config.FixedSalary or '' }}" placeholder="Оклад" inputmode="decimal">
@@ -28,13 +29,60 @@
       <label for="WorkHoursNorm">Норма часов (мес.)</label>
       <input id="WorkHoursNorm" type="text" name="WorkHoursNorm" value="{{ config.WorkHoursNorm or '' }}" placeholder="160" inputmode="decimal">
     </div>
+  </div>
+  <div class="card">
+    <h2>Расширенные</h2>
+    <div class="form-group">
+      <label for="LargeExpenseThreshold">Порог крупного расхода (руб.)</label>
+      <input id="LargeExpenseThreshold" type="text" name="LargeExpenseThreshold" value="{{ config.LargeExpenseThreshold or '' }}" placeholder="10000" inputmode="decimal">
+    </div>
+    <div class="form-group">
+      <label for="QuietHoursStart">Тихие часы (начало)</label>
+      <input id="QuietHoursStart" type="number" name="QuietHoursStart" value="{{ config.QuietHoursStart or '' }}" placeholder="23" min="0" max="23">
+    </div>
+    <div class="form-group">
+      <label for="QuietHoursEnd">Тихие часы (конец)</label>
+      <input id="QuietHoursEnd" type="number" name="QuietHoursEnd" value="{{ config.QuietHoursEnd or '' }}" placeholder="7" min="0" max="23">
+    </div>
+    <div class="form-group">
+      <label for="ChatID">Chat ID (Telegram)</label>
+      <input id="ChatID" type="text" name="ChatID" value="{{ config.ChatID or '' }}" placeholder="123456789">
+    </div>
     <button type="submit" class="btn">Сохранить</button>
   </div>
 </form>
+
+<div class="card" style="margin-top: 12px;">
+  <h2>Категории</h2>
+  {% if categories %}
+  <div style="margin-bottom: 12px;">
+    {% for c in categories %}
+    <span style="display: inline-block; padding: 4px 10px; margin: 2px; background: var(--bg-input); border-radius: 4px; font-size: 13px;">{{ c.name if c.name is defined else c }}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <form method="post" style="display: flex; gap: 8px;">
+    <input type="hidden" name="action" value="add_category">
+    <input type="text" name="category_name" placeholder="Новая категория" style="flex: 1;">
+    <button type="submit" class="btn btn-secondary">Добавить</button>
+  </form>
+</div>
+
 <div class="card" style="margin-top: 12px;">
   <h2>Производственный календарь</h2>
   <p style="color: var(--text-muted); font-size: 14px;">Обновить данные о рабочих днях и праздниках с xmlcalendar.ru</p>
   <a href="{{ url_for('web.refresh_calendar') }}" class="btn btn-secondary">Обновить календарь</a>
+</div>
+
+<div class="card" style="margin-top: 12px;">
+  <h2>Данные</h2>
+  <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+    <a href="{{ url_for('web.settings_backup') }}" class="btn btn-secondary">Скачать JSON бэкап</a>
+    <form method="post" style="display:inline;">
+      <input type="hidden" name="action" value="delete_all">
+      <button type="submit" class="btn" style="background: var(--danger);" onclick="return confirm('Удалить ВСЕ данные? Это действие необратимо!')">Удалить все данные</button>
+    </form>
+  </div>
 </div>
 {% endblock %}
 {% block scripts %}

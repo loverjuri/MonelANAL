@@ -26,4 +26,9 @@
   </div>
   <button type="submit" class="btn">Сохранить</button>
 </form>
+<form method="post" action="{{ url_for('web.templates_list') }}" style="margin-top: 24px;">
+  <input type="hidden" name="action" value="delete">
+  <input type="hidden" name="template_id" value="{{ template.id }}">
+  <button type="submit" class="btn" style="background: var(--danger);" onclick="return confirm('Удалить шаблон «{{ template.name }}»?')">Удалить шаблон</button>
+</form>
 {% endblock %}

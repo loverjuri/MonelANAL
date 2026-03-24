@@ -2,11 +2,21 @@
 {% block title %}Аналитика — MonelANAL{% endblock %}
 {% block content %}
 <h1>Аналитика</h1>
+
+<div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px;">
+  {% for p, label in [('week', 'Неделя'), ('month', 'Месяц'), ('quarter', 'Квартал'), ('year', 'Год')] %}
+  <a href="{{ url_for('web.analytics', period=p) }}" class="btn btn-secondary {{ 'active' if period == p else '' }}" style="padding: 8px 14px; min-height: 36px; font-size: 14px;">{{ label }}</a>
+  {% endfor %}
+</div>
+
 <div class="card">
+  <p>Период: {{ start }} — {{ end }}</p>
   <p>Доходы: {{ income }} руб.</p>
   <p>Расходы: {{ expense }} руб.</p>
   <p><strong>Баланс: {{ balance }} руб.</strong></p>
+  <p>Среднее в день: {{ daily_avg }} руб.</p>
 </div>
+
 {% if chart_data %}
 <div class="card">
   <h2>По категориям</h2>
@@ -20,11 +30,30 @@
       labels: {{ chart_data | map(attribute='category') | list | tojson }},
       datasets: [{
         data: {{ chart_data | map(attribute='amount') | list | tojson }},
-        backgroundColor: ['#58a6ff','#3fb950','#f85149','#d29922','#a371f7','#79c0ff','#8b949e']
+        backgroundColor: ['#58a6ff','#3fb950','#f85149','#d29922','#a371f7','#79c0ff','#8b949e','#f0883e','#bc8cff','#56d364']
       }]
     },
     options: { plugins: { legend: { position: 'bottom' } } }
   });
 </script>
+{% endif %}
+
+{% if top_expenses %}
+<div class="card">
+  <h2>Топ расходов</h2>
+  {% for r in top_expenses %}
+  <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border);">
+    <span>{{ r.category or 'Прочее' }}{% if r.comment %} · {{ r.comment }}{% endif %}</span>
+    <span style="font-weight: 600;">{{ r.amount | int }} руб.</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if comparison %}
+<div class="card">
+  <h2>Сравнение с предыдущим периодом</h2>
+  <pre style="white-space: pre-wrap; font-size: 13px; color: var(--text-muted); margin: 0;">{{ comparison }}</pre>
+</div>
 {% endif %}
 {% endblock %}

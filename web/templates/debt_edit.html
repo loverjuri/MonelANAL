@@ -26,4 +26,25 @@
   </div>
   <button type="submit" class="btn">Сохранить</button>
 </form>
+
+{% if payments %}
+<h2 style="margin-top: 24px;">История платежей</h2>
+{% for p in payments %}
+<div class="history-card" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+  <div>
+    <span class="amount">{{ (p.amount or 0) | int }} руб.</span>
+    <span class="meta">{{ p.date or '—' }}{% if p.comment %} · {{ p.comment }}{% endif %}</span>
+  </div>
+  <div style="display: flex; gap: 6px;">
+    <form method="post" style="display:inline;">
+      <input type="hidden" name="action" value="delete_payment">
+      <input type="hidden" name="payment_id" value="{{ p.id }}">
+      <button type="submit" class="btn btn-secondary" style="padding: 6px 10px; min-height: 36px; color: var(--danger);" onclick="return confirm('Удалить платёж?')">✕</button>
+    </form>
+  </div>
+</div>
+{% endfor %}
+{% elif payments is defined %}
+<p style="color: var(--text-muted); margin-top: 16px;">Нет платежей</p>
+{% endif %}
 {% endblock %}

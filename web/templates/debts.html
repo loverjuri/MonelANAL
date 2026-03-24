@@ -39,6 +39,7 @@
   <p><strong>{{ d.counterparty }}</strong> ({{ 'я должен' if d.direction == 'owe' else 'мне должны' }})</p>
   <p>Остаток: {{ d.remaining_amount | int }} руб.</p>
   {% if d.due_date %}<p>Срок: {{ d.due_date }}</p>{% endif %}
+  {% if d.next_payment_date %}<p style="color: var(--accent);">След. платёж: {{ d.next_payment_date }}</p>{% endif %}
 
   <form method="post" style="display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;">
     <input type="hidden" name="action" value="payment">
