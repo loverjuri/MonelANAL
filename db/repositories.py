@@ -3,7 +3,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from typing import Optional
 
-from sqlalchemy import text
+from sqlalchemy import text, func
 from sqlalchemy.orm import Session
 
 from db.models import (
@@ -12,6 +12,8 @@ from db.models import (
     BudgetPlan, Goal, Subscription,
     Debt, DebtPayment, Category, Tag, ExpenseTemplate, Achievement,
     AuditLog, User,
+    IncomeSource,
+    IPSavings,
 )
 
 TZ = ZoneInfo("Europe/Moscow")
@@ -90,18 +92,17 @@ def get_next_sick_day_index(session: Session, date_str: str) -> int:
         prev_date = (current_dt - timedelta(days=1)).strftime("%Y-%m-%d")
     except (ValueError, IndexError):
         return 1
-    rows = (
+    row = (
         session.query(WorkLog)
-        .filter(WorkLog.job_type == "Main", WorkLog.status == "Sick")
-        .order_by(WorkLog.date.desc())
-        .all()
+        .filter(
+            WorkLog.job_type == "Main",
+            WorkLog.status == "Sick",
+            WorkLog.date == prev_date,
+        )
+        .first()
     )
-    for r in rows:
-        row_date = r.date[:10] if r.date else ""
-        if row_date == prev_date:
-            prev_index = r.sick_day_index or 1
-            return prev_index + 1
-        break  # We only check immediate previous
+    if row:
+        return (row.sick_day_index or 1) + 1
     return 1
 
 
@@ -114,12 +115,16 @@ def add_work_log(
     hour_rate: float,
     sick_day_index: Optional[int] = None,
     is_paid: bool = True,
+    commit: bool = True,
 ) -> str:
     sid = None
     paid = is_paid
     if status == "Sick":
         sid = get_next_sick_day_index(session, date_str)
-        paid = sid <= 3
+        from db.repositories import get_config_param
+        enabled = get_config_param(session, "SickEnabled") == "1"
+        paid_limit = float(get_config_param(session, "PaidSickHours") or 0)
+        paid = enabled and (paid_limit <= 0 or sid <= paid_limit)
     rid = generate_id()
     session.add(WorkLog(
         id=rid,
@@ -131,7 +136,8 @@ def add_work_log(
         sick_day_index=sid,
         is_paid=paid,
     ))
-    session.commit()
+    if commit:
+        session.commit()
     return rid
 
 
@@ -172,7 +178,7 @@ def update_work_log(session: Session, wl_id: str, **kwargs) -> bool:
 
 
 # Orders
-def add_order(session: Session, date_str: str, description: str, amount: float, status: str = "New") -> str:
+def add_order(session: Session, date_str: str, description: str, amount: float, status: str = "New", commit: bool = True) -> str:
     oid = generate_id()
     session.add(Order(
         order_id=oid,
@@ -181,7 +187,8 @@ def add_order(session: Session, date_str: str, description: str, amount: float, 
         amount=amount,
         status=status,
     ))
-    session.commit()
+    if commit:
+        session.commit()
     return oid
 
 
@@ -232,8 +239,10 @@ def get_orders_for_period(session: Session, start_str: str, end_str: str):
 
 
 def sum_orders_for_period(session: Session, start_str: str, end_str: str) -> float:
-    orders = get_orders_for_period(session, start_str, end_str)
-    return sum(o.amount for o in orders)
+    total = (session.query(func.coalesce(func.sum(Order.amount), 0))
+             .filter(Order.date >= start_str, Order.date <= end_str)
+             .scalar())
+    return float(total or 0)
 
 
 def has_orders_for_date(session: Session, date_str: str) -> bool:
@@ -250,6 +259,9 @@ def add_finance_entry(
     category: str = "",
     comment: str = "",
     exclude_from_budget: bool = False,
+    source: str = "",
+    income_tag: str = "",
+    commit: bool = True,
 ) -> str:
     rid = generate_id()
     session.add(Finance(
@@ -260,8 +272,11 @@ def add_finance_entry(
         category=category or "",
         comment=comment or "",
         exclude_from_budget=exclude_from_budget,
+        source=source or "",
+        income_tag=income_tag or "",
     ))
-    session.commit()
+    if commit:
+        session.commit()
     return rid
 
 
@@ -284,11 +299,11 @@ def record_payday_received(
     period_start: str,
     period_end: str,
 ):
-    add_finance_entry(session, date_str[:10], "IncomeSalary", amount_received, "ЗП Выплата", "Фактически получено")
+    add_finance_entry(session, date_str[:10], "IncomeSalary", amount_received, "ЗП Выплата", "Фактически получено", commit=False)
     total_accrued = (accrued_main or 0) + (accrued_second or 0)
     diff = total_accrued - amount_received
     if abs(diff) > 0.01:
-        add_finance_entry(session, date_str[:10], "Correction", -diff, "Корректировка", "Разница начислено/получено")
+        add_finance_entry(session, date_str[:10], "Correction", -diff, "Корректировка", "Разница начислено/получено", commit=False)
     session.add(Calculation(
         period_start=period_start,
         period_end=period_end,
@@ -297,6 +312,63 @@ def record_payday_received(
         difference=-diff,
     ))
     session.commit()
+
+
+def record_main_payday_received(session: Session, date_str: str, amount_received: float,
+                                accrued_main: float, period_start: str, period_end: str):
+    """Record only the main-job payout; actual cash is the budget income."""
+    accrued_main = float(accrued_main or 0)
+    amount_received = float(amount_received or 0)
+    diff = amount_received - accrued_main
+    add_finance_entry(session, date_str, "IncomeSalary", amount_received,
+                      "ЗП основной работы", "Фактически получено", source="Main", commit=False)
+    # Positive difference is a bonus; negative difference remains a separate discrepancy.
+    if diff > 0.01:
+        add_finance_entry(session, date_str, "IncomeBonus", diff, "Бонус", "Получено больше начисленного",
+                          source="Main", commit=False)
+    session.add(Calculation(period_start=period_start, period_end=period_end,
+                            accrued_salary=accrued_main, received_salary=amount_received,
+                            difference=diff, source="Main"))
+    session.commit()
+
+
+def get_last_main_payday(session: Session) -> Optional[str]:
+    row = (session.query(Finance.date).filter(Finance.type == "IncomeSalary",
+                                               Finance.source == "Main",
+                                               Finance.is_deleted == False)
+           .order_by(Finance.date.desc(), Finance.id.desc()).first())
+    return row[0] if row else None
+
+
+def add_ip_revenue(session: Session, date_str: str, amount: float, tag: str = "", comment: str = "") -> float:
+    amount = float(amount)
+    reserve = round(amount * 0.01, 2)
+    session.add(IPSavings(id=generate_id(), date=date_str[:10], revenue_amount=amount,
+                          reserve_amount=reserve, tag=tag or "", comment=comment or ""))
+    session.commit()
+    return reserve
+
+
+def add_income_source(session: Session, name: str, source_type: str = "manual", **kwargs) -> str:
+    existing = session.query(IncomeSource).filter(IncomeSource.name == name).first()
+    if existing:
+        return existing.id
+    row = IncomeSource(id=generate_id(), name=name, source_type=source_type)
+    for key, value in kwargs.items():
+        if hasattr(row, key):
+            setattr(row, key, value)
+    session.add(row); session.commit(); return row.id
+
+
+def get_income_sources(session: Session, active_only: bool = True) -> list:
+    q = session.query(IncomeSource)
+    if active_only:
+        q = q.filter(IncomeSource.is_active == True)
+    return q.order_by(IncomeSource.name).all()
+
+
+def get_ip_savings_total(session: Session) -> float:
+    return float(session.query(func.coalesce(func.sum(IPSavings.reserve_amount), 0)).scalar() or 0)
 
 
 # State
@@ -368,7 +440,7 @@ def get_budget_plan_for_month(session: Session, month_year: str) -> list:
     ).all()
 
 
-def set_budget_plan_limit(session: Session, month_year: str, category: str, limit_amount: float) -> str:
+def set_budget_plan_limit(session: Session, month_year: str, category: str, limit_amount: float, commit: bool = True) -> str:
     """Set or update budget limit for category. Returns id."""
     existing = session.query(BudgetPlan).filter(
         BudgetPlan.month_year == month_year[:7],
@@ -376,7 +448,8 @@ def set_budget_plan_limit(session: Session, month_year: str, category: str, limi
     ).first()
     if existing:
         existing.limit_amount = limit_amount
-        session.commit()
+        if commit:
+            session.commit()
         return existing.id
     rid = generate_id()
     session.add(BudgetPlan(
@@ -385,7 +458,8 @@ def set_budget_plan_limit(session: Session, month_year: str, category: str, limi
         category=category,
         limit_amount=limit_amount,
     ))
-    session.commit()
+    if commit:
+        session.commit()
     return rid
 
 
@@ -495,12 +569,17 @@ def add_subscription(
     next_date: str,
     remind_days_before: int = 1,
     category: str = "Прочее",
+    sub_type: str = "expense",
+    source: str = "",
+    requires_confirmation: bool = True,
 ) -> str:
     rid = generate_id()
     session.add(Subscription(
         id=rid, name=name, amount=amount, cycle=cycle,
         next_date=next_date[:10], remind_days_before=remind_days_before,
         category=category,
+        sub_type=sub_type, source=source or "",
+        requires_confirmation=requires_confirmation,
     ))
     session.commit()
     return rid
@@ -522,7 +601,7 @@ def get_subscriptions_due_soon(session: Session, today_str: str, days_ahead: int
     ).all()
 
 
-def advance_subscription_date(session: Session, sub_id: str) -> bool:
+def advance_subscription_date(session: Session, sub_id: str, commit: bool = True) -> bool:
     """Move next_date forward by one cycle."""
     from datetime import datetime, timedelta
     s = session.query(Subscription).filter(Subscription.id == sub_id).first()
@@ -542,7 +621,8 @@ def advance_subscription_date(session: Session, sub_id: str) -> bool:
         else:
             dt = dt + timedelta(days=30)
         s.next_date = dt.strftime("%Y-%m-%d")
-        session.commit()
+        if commit:
+            session.commit()
         return True
     except Exception:
         return False
@@ -651,12 +731,12 @@ def delete_finance_entry(session: Session, fid: str) -> bool:
 
 def get_expenses_by_category_for_period(session: Session, start_str: str, end_str: str) -> dict:
     """Returns {category: total_amount} for Expense type, excluding exclude_from_budget."""
-    rows = get_finance_for_period(session, start_str, end_str)
-    result = {}
-    for r in rows:
-        if r.type == "Expense" and r.category and not getattr(r, "exclude_from_budget", False):
-            result[r.category] = result.get(r.category, 0) + (r.amount or 0)
-    return result
+    rows = session.query(Finance.category, func.coalesce(func.sum(Finance.amount), 0)).filter(
+        Finance.date >= start_str, Finance.date <= end_str,
+        Finance.type == "Expense", Finance.is_deleted == False,
+        Finance.exclude_from_budget == False, Finance.category.isnot(None), Finance.category != "",
+    ).group_by(Finance.category).all()
+    return {category: float(total) for category, total in rows}
 
 
 # Debt
@@ -964,15 +1044,44 @@ def process_due_subscriptions(session: Session, today_str: str) -> list:
     subs = session.query(Subscription).filter(
         Subscription.is_active == True,
         Subscription.auto_create_expense == True,
+        Subscription.requires_confirmation == False,
         Subscription.next_date <= today_str,
     ).all()
     created = []
     for s in subs:
         entry_type = "Expense" if s.sub_type == "expense" else "IncomeSecond"
-        add_finance_entry(session, today_str, entry_type, s.amount, s.category or "Подписки", f"Авто: {s.name}")
-        advance_subscription_date(session, s.id)
+        add_finance_entry(session, today_str, entry_type, s.amount, s.category or "Подписки", f"Авто: {s.name}", commit=False)
+        advance_subscription_date(session, s.id, commit=False)
         created.append({"name": s.name, "amount": s.amount, "type": entry_type})
+    if created:
+        session.commit()
     return created
+
+
+def confirm_subscription_payment(session: Session, sub_id: str, date_str: str) -> bool:
+    """Confirm a recurring income/payment and advance its schedule."""
+    s = get_subscription(session, sub_id)
+    if not s or not s.is_active:
+        return False
+    entry_type = "Expense" if s.sub_type == "expense" else "IncomeSecond"
+    add_finance_entry(session, date_str, entry_type, s.amount, s.category or "Регулярное начисление",
+                      f"Подтверждено: {s.name}", source=getattr(s, "source", ""), commit=False)
+    s.is_overdue = False
+    advance_subscription_date(session, s.id, commit=False)
+    session.commit()
+    return True
+
+
+def mark_overdue_subscriptions(session: Session, today_str: str) -> list:
+    rows = session.query(Subscription).filter(Subscription.is_active == True,
+                                                Subscription.requires_confirmation == True,
+                                                Subscription.next_date < today_str,
+                                                Subscription.is_overdue == False).all()
+    for s in rows:
+        s.is_overdue = True
+    if rows:
+        session.commit()
+    return rows
 
 
 # Finance history/search

@@ -6,6 +6,7 @@ from db.repositories import (
     add_order_with_items,
     add_finance_entry,
     record_payday_received,
+    record_main_payday_received,
     get_orders_for_period,
     get_debt_summary,
     increment_category_usage,
@@ -17,6 +18,7 @@ from services.calculations import (
     get_today_msk as calc_today,
     get_yesterday_msk as calc_yesterday,
     get_accrued_summary_for_payday,
+    get_accrued_main_since_last_payout,
     get_next_pay_date,
     get_budget_balance,
     get_accrued_second_for_period,
@@ -155,6 +157,9 @@ def handle_message(chat_id: int, text: str, message_id: int | None = None, messa
             if scenario == "payday_amount":
                 _fsm_payday_amount(chat_id, session, state, trimmed)
                 return
+            if scenario == "main_payday_amount":
+                _fsm_main_payday_amount(chat_id, session, state, trimmed)
+                return
             if scenario == "expense_amount":
                 _fsm_expense_amount(chat_id, session, state, trimmed)
                 return
@@ -197,7 +202,9 @@ def _fsm_main_hours(chat_id, session, state, trimmed):
         hours = float(trimmed.replace(",", "."))
     except ValueError:
         hours = float("nan")
-    if not (hours != hours) and 0 <= hours <= 24:
+    from services.calculations import get_max_daily_hours
+    max_hours = min(24, get_max_daily_hours(session))
+    if not (hours != hours) and 0 <= hours <= max_hours:
         date_str = state.get("payload", {}).get("date") or calc_today()
         is_weekend = state.get("payload", {}).get("weekend") is True
         status = STATUS_WEEKEND_WORK if is_weekend else STATUS_WORK
@@ -206,7 +213,7 @@ def _fsm_main_hours(chat_id, session, state, trimmed):
         clear_state(chat_id)
         send_message(chat_id, f"Записано: {hours} ч.", build_main_menu_keyboard())
         return
-    send_message(chat_id, "Введите число часов от 0 до 24.")
+    send_message(chat_id, f"Введите число часов от 0 до {max_hours:g}.")
 
 
 # ─── FSM: second order ────────────────────────────────────────
@@ -272,6 +279,29 @@ def _fsm_payday_amount(chat_id, session, state, trimmed):
     send_message(chat_id, "Введите положительное число.")
 
 
+def _fsm_main_payday_amount(chat_id, session, state, trimmed):
+    try:
+        received = float(trimmed.replace(" ", "").replace(",", "."))
+    except ValueError:
+        received = float("nan")
+    if received == received and received >= 0:
+        p = state.get("payload", {})
+        accrued = float(p.get("accrued", 0) or 0)
+        record_main_payday_received(session, calc_today(), received, accrued,
+                                    p.get("periodStart", ""), p.get("periodEnd", ""))
+        clear_state(chat_id)
+        diff = received - accrued
+        if diff > 0.01:
+            detail = f"Бонус: +{diff:.2f} руб."
+        elif diff < -0.01:
+            detail = f"Недополучено: {abs(diff):.2f} руб. (сумма сохранена как расхождение)"
+        else:
+            detail = "Расхождений нет."
+        send_message(chat_id, f"Основная ЗП записана: {received:.2f} руб.\n{detail}", build_main_menu_keyboard())
+        return
+    send_message(chat_id, "Введите неотрицательное число.")
+
+
 # ─── FSM: expense ─────────────────────────────────────────────
 def _fsm_expense_amount(chat_id, session, state, trimmed):
     try:
@@ -333,6 +363,26 @@ def _dispatch_callback(chat_id: int, data: str, session):
         handle_status(chat_id, session)
         return
 
+    if data == "cmd_payday_main":
+        acc = get_accrued_main_since_last_payout(session)
+        set_state(chat_id, "main_payday_amount", "0", acc)
+        send_message(chat_id, f"Начислено по основной работе: {acc['main']:.2f} руб.\nВведите сумму, которую получили на руки:", build_cancel_keyboard())
+        return
+
+    if data.startswith("recurring_confirm_"):
+        from db.repositories import confirm_subscription_payment, get_subscription
+        sub_id = data.replace("recurring_confirm_", "", 1)
+        sub = get_subscription(session, sub_id)
+        if sub and confirm_subscription_payment(session, sub_id, calc_today()):
+            send_message(chat_id, f"Получение подтверждено: {sub.name}, {sub.amount:.2f} руб.", build_main_menu_keyboard())
+        else:
+            send_message(chat_id, "Начисление не найдено или уже обработано.", build_main_menu_keyboard())
+        return
+
+    if data.startswith("recurring_skip_"):
+        send_message(chat_id, "Оставил начисление без подтверждения. Оно будет отмечено как просроченное после даты.", build_main_menu_keyboard())
+        return
+
     # Expense
     if data == "cmd_expense":
         set_state(chat_id, "expense_amount", "0", {})
@@ -346,12 +396,15 @@ def _dispatch_callback(chat_id: int, data: str, session):
 
     # WorkLog quick buttons
     if data == "main_full":
+        from services.calculations import get_full_day_hours
+        full_hours = get_full_day_hours(session)
         hour_rate = calc_hour_rate_snapshot_for_date(calc_today(), session)
-        add_work_log(session, calc_today(), JOB_MAIN, 8, STATUS_WORK, hour_rate)
-        send_message(chat_id, "Записано: полный день (8 ч).", build_main_menu_keyboard())
+        add_work_log(session, calc_today(), JOB_MAIN, full_hours, STATUS_WORK, hour_rate)
+        send_message(chat_id, f"Записано: полный день ({full_hours:g} ч).", build_main_menu_keyboard())
         return
     if data == "main_none":
-        send_message(chat_id, "Ок, не работал.", build_main_menu_keyboard())
+        add_work_log(session, calc_today(), JOB_MAIN, 0, STATUS_WORK, 0)
+        send_message(chat_id, "Записано: 0 ч. Не работал.", build_main_menu_keyboard())
         return
     if data == "main_partial":
         set_state(chat_id, "main_hours", "0", {"date": calc_today(), "weekend": False})
@@ -366,13 +419,18 @@ def _dispatch_callback(chat_id: int, data: str, session):
         send_message(chat_id, "Записан день больничного.", build_main_menu_keyboard())
         return
     if data.startswith("hours_"):
-        hrs = int(data.replace("hours_", ""))
+        if data == "hours_manual":
+            st = get_state(chat_id)
+            if st and st.get("scenario") == "main_hours":
+                send_message(chat_id, "Введите часы от 0 до 24:", build_cancel_keyboard())
+            return
+        hrs = float(data.replace("hours_", ""))
         st = get_state(chat_id)
         if st and st.get("scenario") == "main_hours":
             date_str = st["payload"].get("date") or calc_today()
             is_weekend = st["payload"].get("weekend") is True
             status = STATUS_WEEKEND_WORK if is_weekend else STATUS_WORK
-            hour_rate = calc_hour_rate_snapshot_for_date(date_str, session)
+            hour_rate = calc_hour_rate_snapshot_for_date(date_str, session, is_weekend=is_weekend)
             add_work_log(session, date_str, JOB_MAIN, hrs, status, hour_rate)
             clear_state(chat_id)
             send_message(chat_id, f"Записано: {hrs} ч.", build_main_menu_keyboard())

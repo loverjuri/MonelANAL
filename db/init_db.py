@@ -8,23 +8,30 @@ def create_tables():
 
 
 def init_config_defaults():
-    """Insert default config rows if Config table is empty."""
+    """Insert any missing default config rows without overwriting user values."""
     session = SessionLocal()
     try:
         count = session.query(Config).count()
-        if count > 0:
-            return
         defaults = [
             ("FixedSalary", "100000"),
             ("SecondJobPercent", "10"),
             ("PayDay1", "10"),
             ("PayDay2", "25"),
             ("WorkHoursNorm", "8"),
+            ("FullDayHours", "11"),
+            ("MaxDailyHours", "24"),
+            ("WeekendSeparateRate", "0"),
+            ("WeekendHourRate", "0"),
+            ("SickEnabled", "0"),
+            ("SickHourRate", "0"),
+            ("PaidSickHours", "0"),
             ("ChatID", ""),
             ("TimeZone", "Europe/Moscow"),
         ]
+        existing = {r.parameter for r in session.query(Config).all()}
         for param, value in defaults:
-            session.add(Config(parameter=param, value=value))
+            if param not in existing:
+                session.add(Config(parameter=param, value=value))
         session.commit()
     finally:
         session.close()

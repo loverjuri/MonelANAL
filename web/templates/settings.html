@@ -26,12 +26,25 @@
       <input id="PayDay2" type="number" name="PayDay2" value="{{ config.PayDay2 or '' }}" placeholder="10" min="1" max="31">
     </div>
     <div class="form-group">
-      <label for="WorkHoursNorm">Норма часов (мес.)</label>
+      <label for="FullDayHours">Полный рабочий день (часов)</label>
+      <input id="FullDayHours" type="number" step="0.25" min="0" max="24" name="FullDayHours" value="{{ config.FullDayHours or '11' }}">
+    </div>
+    <div class="form-group">
+      <label for="WorkHoursNorm">Норма часов в месяце</label>
       <input id="WorkHoursNorm" type="text" name="WorkHoursNorm" value="{{ config.WorkHoursNorm or '' }}" placeholder="160" inputmode="decimal">
+    </div>
+    <div class="form-group">
+      <label for="MaxDailyHours">Максимум часов в день</label>
+      <input id="MaxDailyHours" type="number" step="0.25" min="0" max="24" name="MaxDailyHours" value="{{ config.MaxDailyHours or '24' }}">
     </div>
   </div>
   <div class="card">
     <h2>Расширенные</h2>
+    <div class="form-group"><label><input type="checkbox" name="WeekendSeparateRate" value="1" {% if config.WeekendSeparateRate == '1' %}checked{% endif %}> Отдельная ставка за выходной</label></div>
+    <div class="form-group"><label for="WeekendHourRate">Ставка выходного часа</label><input id="WeekendHourRate" type="number" step="0.01" name="WeekendHourRate" value="{{ config.WeekendHourRate or '0' }}"></div>
+    <div class="form-group"><label><input type="checkbox" name="SickEnabled" value="1" {% if config.SickEnabled == '1' %}checked{% endif %}> Учитывать больничные</label></div>
+    <div class="form-group"><label for="SickHourRate">Ставка больничного часа</label><input id="SickHourRate" type="number" step="0.01" name="SickHourRate" value="{{ config.SickHourRate or '0' }}"></div>
+    <div class="form-group"><label for="PaidSickHours">Оплачиваемые часы больничного</label><input id="PaidSickHours" type="number" step="0.25" min="0" name="PaidSickHours" value="{{ config.PaidSickHours or '0' }}"></div>
     <div class="form-group">
       <label for="LargeExpenseThreshold">Порог крупного расхода (руб.)</label>
       <input id="LargeExpenseThreshold" type="text" name="LargeExpenseThreshold" value="{{ config.LargeExpenseThreshold or '' }}" placeholder="10000" inputmode="decimal">

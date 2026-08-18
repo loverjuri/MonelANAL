@@ -34,6 +34,7 @@ def _get_web_url() -> str:
 def build_main_menu_keyboard() -> dict:
     rows = [
         [_btn("Статус", "cmd_status"), _btn("Расход", "cmd_expense")],
+        [_btn("Получил основную ЗП", "cmd_payday_main")],
     ]
     url = _get_web_url()
     if url:
@@ -58,7 +59,7 @@ def build_status_keyboard() -> dict:
 # --- Work prompts ---
 def build_main_work_keyboard() -> dict:
     rows = [
-        [_btn("Полный (8ч)", "main_full"), _btn("Частично", "main_partial")],
+        [_btn("Полный день", "main_full"), _btn("Указать часы", "main_partial")],
         [_btn("Не работал", "main_none"), _btn("Выходной (работал)", "main_weekend")],
         [_btn("Больничный", "main_sick")],
     ]
@@ -71,7 +72,8 @@ def build_main_work_keyboard() -> dict:
 
 def build_hours_quick_keyboard() -> dict:
     return _inline_keyboard([
-        [_btn("4 ч", "hours_4"), _btn("6 ч", "hours_6"), _btn("8 ч", "hours_8")],
+        [_btn("4 ч", "hours_4"), _btn("6 ч", "hours_6"), _btn("11 ч", "hours_11")],
+        [_btn("Ввести вручную", "hours_manual")],
     ])
 
 
@@ -119,3 +121,10 @@ def build_confirm_keyboard() -> dict:
     return _inline_keyboard([
         [_btn("Да, подтверждаю", "confirm_yes"), _btn("Отмена", "confirm_no")],
     ])
+
+
+def build_income_confirmation_keyboard(sub_id: str) -> dict:
+    return _inline_keyboard([[
+        _btn("Подтвердить получение", f"recurring_confirm_{sub_id}"),
+        _btn("Не получил", f"recurring_skip_{sub_id}"),
+    ]])

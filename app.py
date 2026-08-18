@@ -1,16 +1,25 @@
 """
 Flask app: webhook endpoint for Telegram + cron endpoints for scheduled tasks + web app.
 """
+import os
+import subprocess
+from pathlib import Path
 from datetime import timedelta
 from flask import Flask, request, jsonify, redirect, url_for
 
 # Import process_update so it's available when webhook is hit
 from bot.process_update import process_update
-from config import SECRET_KEY
+from config import SECRET_KEY, DEV_MODE
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = SECRET_KEY
-app.config["SESSION_COOKIE_SECURE"] = False  # True when using HTTPS
+app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024
+app.config["SESSION_COOKIE_SECURE"] = False if DEV_MODE else os.environ.get(
+    "SESSION_COOKIE_SECURE", "1"
+) == "1"
+app.config["DEV_MODE"] = DEV_MODE
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["REMEMBER_COOKIE_DURATION"] = timedelta(minutes=15)
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=15)
 
@@ -62,11 +71,35 @@ def webhook():
     return "OK", 200
 
 
+@app.route("/deploy", methods=["POST"])
+def deploy():
+    """Trigger a background GitHub-to-PythonAnywhere deployment."""
+    expected = os.environ.get("DEPLOY_TOKEN", "").strip()
+    provided = request.headers.get("X-Deploy-Token", "")
+    if not expected or provided != expected:
+        return jsonify({"ok": False, "error": "Unauthorized"}), 401
+    script = Path(__file__).resolve().parent / "deploy_paw.sh"
+    if not script.exists():
+        return jsonify({"ok": False, "error": "Deploy script is missing"}), 500
+    try:
+        subprocess.Popen(
+            ["/bin/bash", str(script)],
+            cwd=str(script.parent),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError as exc:
+        app.logger.exception("deploy start failed: %s", exc)
+        return jsonify({"ok": False, "error": "Could not start deploy"}), 500
+    return jsonify({"ok": True, "message": "Deployment started"}), 202
+
+
 def _check_cron_token():
     """Verify CRON_SECRET from query param or header."""
     from config import CRON_SECRET
     if not CRON_SECRET:
-        return True  # No secret configured — allow (dev only)
+        return app.debug
     token = request.args.get("token") or request.headers.get("X-Cron-Token")
     return token == CRON_SECRET
 
@@ -299,3 +332,9 @@ def cron_prod_calendar():
 
 # WSGI entry point for PythonAnywhere
 application = app
+
+
+if __name__ == "__main__":
+    app.run(host=os.environ.get("HOST", "127.0.0.1"),
+            port=int(os.environ.get("PORT", "5000")),
+            debug=DEV_MODE)

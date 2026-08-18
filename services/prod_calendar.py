@@ -137,6 +137,11 @@ def _ensure_year(year: int):
         prefix = f"{year}-{m:02d}-"
         if not any(k.startswith(prefix) for k in _CALENDAR.get("dates", {})):
             _CALENDAR.setdefault("dates", {}).update(_generate_default_month(year, m))
+    # Mark fallback years as ready too; otherwise every request retries the
+    # external API and spends CPU/network time after a transient outage.
+    if year not in fetched:
+        fetched.append(year)
+    _CALENDAR["fetched_years"] = fetched
     _save_calendar()
 
 
@@ -177,15 +182,15 @@ def get_month_norm_hours_for_date(date_str: str, session=None) -> float:
     except (ValueError, IndexError):
         return default
 
-    prefix = f"{year}-{month:02d}-"
-    for k, v in _CALENDAR.get("dates", {}).items():
-        if k.startswith(prefix) and v.get("month_norm_hours"):
-            return float(v["month_norm_hours"])
+    first_day = f"{year}-{month:02d}-01"
+    entry = _CALENDAR.get("dates", {}).get(first_day)
+    if entry and entry.get("month_norm_hours"):
+        return float(entry["month_norm_hours"])
 
     _ensure_year(year)
-    for k, v in _CALENDAR.get("dates", {}).items():
-        if k.startswith(prefix) and v.get("month_norm_hours"):
-            return float(v["month_norm_hours"])
+    entry = _CALENDAR.get("dates", {}).get(first_day)
+    if entry and entry.get("month_norm_hours"):
+        return float(entry["month_norm_hours"])
 
     return default
 

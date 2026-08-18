@@ -80,6 +80,10 @@ from db.repositories import (
     add_category,
     # Search
     search_finance,
+    add_ip_revenue,
+    get_ip_savings_total,
+    confirm_subscription_payment,
+    get_income_sources,
 )
 from services.calculations import (
     get_today_msk,
@@ -88,6 +92,7 @@ from services.calculations import (
     get_budget_balance,
     get_accrued_second_for_period,
     calc_hour_rate_snapshot_for_date,
+    get_income_source_totals,
 )
 from services.budget import (
     get_budget_status,
@@ -110,6 +115,7 @@ from .cache_helpers import (
     invalidate_budget,
 )
 import io
+import math
 from datetime import datetime, timedelta
 
 # Categories (from bot/keyboards)
@@ -172,8 +178,13 @@ def dashboard():
     session = get_session()
     try:
         recent = get_finance_history(session, limit=10)
-        advice = get_template_advice(session)
-        digest = generate_daily_digest(session)
+        month_year = get_today_msk()[:7]
+        budget_status = get_cached_budget(month_year)
+        if budget_status is None:
+            budget_status = get_budget_status(session, month_year)
+            set_cached_budget(month_year, budget_status)
+        advice = get_template_advice(session, budget_status)
+        digest = generate_daily_digest(session, budget_status)
         return render_template("dashboard.html", status=data, recent=recent,
                                advice=advice, digest=digest)
     finally:
@@ -198,7 +209,7 @@ def expense():
                 last_exp = next((r for r in get_finance_history(session, limit=10) if r.type == "Expense"), None)
                 last_cat = last_exp.category if last_exp and last_exp.category in EXPENSE_CATEGORIES else "Прочее"
                 return render_template("expense.html", categories=EXPENSE_CATEGORIES, today=today, last_category=last_cat)
-            if amount <= 0:
+            if not math.isfinite(amount) or amount <= 0:
                 flash("Сумма должна быть положительной", "error")
                 last_exp = next((r for r in get_finance_history(session, limit=10) if r.type == "Expense"), None)
                 last_cat = last_exp.category if last_exp and last_exp.category in EXPENSE_CATEGORIES else "Прочее"
@@ -219,7 +230,8 @@ def expense():
 @login_required
 def expense_quick():
     """Quick expense from header field: amount category or amount."""
-    text = (request.form.get("q") or request.json.get("q") if request.is_json else "").strip()
+    text = (request.get_json(silent=True) or {}).get("q", "") if request.is_json else request.form.get("q", "")
+    text = str(text).strip()
     if not text:
         return jsonify({"ok": False, "error": "Пусто"})
     parts = text.split(maxsplit=1)
@@ -227,6 +239,8 @@ def expense_quick():
         amount = float(parts[0].replace(",", "."))
     except ValueError:
         return jsonify({"ok": False, "error": "Укажите сумму"})
+    if not math.isfinite(amount) or amount <= 0:
+        return jsonify({"ok": False, "error": "Сумма должна быть положительной"})
     category = parts[1].strip() if len(parts) > 1 else "Прочее"
     if category not in EXPENSE_CATEGORIES:
         category = "Прочее"
@@ -255,15 +269,23 @@ def income():
             except ValueError:
                 flash("Введите корректную сумму", "error")
                 return render_template("income.html", today=today)
-            if amount <= 0:
+            if not math.isfinite(amount) or amount <= 0:
                 flash("Сумма должна быть положительной", "error")
                 return render_template("income.html", today=today)
-            add_finance_entry(session, date_str, "IncomeSecond", amount, "", comment)
+            source = (request.form.get("source") or "Вторая работа").strip()
+            tag = (request.form.get("income_tag") or "").strip()
+            if source.upper() == "ИП":
+                reserve = add_ip_revenue(session, date_str, amount, tag, comment)
+                flash(f"Доход ИП записан. В копилку добавлено {reserve:.2f} руб.", "success")
+            else:
+                add_finance_entry(session, date_str, "IncomeSecond", amount, source, comment,
+                                  source=source, income_tag=tag)
+                flash(f"Доход {int(amount)} руб. записан", "success")
             invalidate_status()
             invalidate_budget()
-            flash(f"Доход {int(amount)} руб. записан", "success")
             return redirect(url_for("web.dashboard"))
-        return render_template("income.html", today=today)
+        return render_template("income.html", today=today, ip_savings=get_ip_savings_total(session),
+                               income_sources=get_income_sources(session))
     finally:
         session.close()
 
@@ -288,7 +310,7 @@ def budget():
                 if cat and cat in EXPENSE_CATEGORIES and amt is not None:
                     try:
                         amount = float(amt.replace(",", "."))
-                        if amount >= 0:
+                        if math.isfinite(amount) and amount >= 0:
                             set_budget_plan_limit(session, month_year, cat, amount)
                             flash("Лимит обновлён", "success")
                     except ValueError:
@@ -300,10 +322,11 @@ def budget():
                     if amt is not None and amt.strip() != "":
                         try:
                             amount = float(amt.replace(",", "."))
-                            if amount >= 0:
-                                set_budget_plan_limit(session, month_year, cat, amount)
+                            if math.isfinite(amount) and amount >= 0:
+                                set_budget_plan_limit(session, month_year, cat, amount, commit=False)
                         except ValueError:
                             pass
+                session.commit()
                 invalidate_budget(month_year)
                 flash("Лимиты сохранены", "success")
                 return redirect(url_for("web.budget", month=month_year))
@@ -460,7 +483,7 @@ def debts():
                     amount = float(amount_str.replace(",", "."))
                 except ValueError:
                     amount = 0
-                if not counterparty or amount <= 0:
+                if not counterparty or not math.isfinite(amount) or amount <= 0:
                     flash("Укажите контрагента и сумму", "error")
                     return redirect(url_for("web.debts"))
                 add_debt(session, direction=direction or "owe", counterparty=counterparty,
@@ -475,7 +498,7 @@ def debts():
                     amount = float(amount_str.replace(",", "."))
                 except ValueError:
                     amount = 0
-                if not debt_id or amount <= 0:
+                if not debt_id or not math.isfinite(amount) or amount <= 0:
                     flash("Укажите сумму платежа", "error")
                     return redirect(url_for("web.debts"))
                 pid = add_debt_payment(session, debt_id, amount,
@@ -498,8 +521,9 @@ def debts():
                 if request.form.get("remaining_amount", "").strip() != "":
                     try:
                         ra = float(request.form.get("remaining_amount", "0").replace(",", "."))
-                        kwargs["remaining_amount"] = max(0, ra)
-                        kwargs["is_active"] = ra > 0
+                        if math.isfinite(ra):
+                            kwargs["remaining_amount"] = max(0, ra)
+                            kwargs["is_active"] = ra > 0
                     except ValueError:
                         pass
                 if "due_date" in request.form:
@@ -568,11 +592,14 @@ def subscriptions():
                     amount = float(amount_str.replace(",", "."))
                 except ValueError:
                     amount = 0
-                if not name or amount <= 0:
+                if not name or not math.isfinite(amount) or amount <= 0:
                     flash("Укажите название и сумму", "error")
                     return redirect(url_for("web.subscriptions"))
                 add_subscription(session, name=name, amount=amount, cycle=cycle,
-                                next_date=next_date, category=request.form.get("category") or "Прочее")
+                                next_date=next_date, category=request.form.get("category") or "Прочее",
+                                sub_type=request.form.get("sub_type") or "expense",
+                                source=request.form.get("source") or "",
+                                requires_confirmation=request.form.get("requires_confirmation") == "1")
                 flash(f"Подписка «{name}» добавлена", "success")
             elif action == "edit":
                 sub_id = request.form.get("subscription_id")
@@ -585,7 +612,9 @@ def subscriptions():
                     kwargs["name"] = request.form.get("name").strip()
                 if request.form.get("amount"):
                     try:
-                        kwargs["amount"] = float(request.form.get("amount").replace(",", "."))
+                        candidate = float(request.form.get("amount").replace(",", "."))
+                        if math.isfinite(candidate) and candidate > 0:
+                            kwargs["amount"] = candidate
                     except ValueError:
                         pass
                 if request.form.get("cycle"):
@@ -605,7 +634,11 @@ def subscriptions():
                     flash("Подписка не найдена", "error")
             elif action == "advance":
                 sub_id = request.form.get("subscription_id")
-                if advance_subscription_date(session, sub_id):
+                if request.form.get("confirm_income") == "1":
+                    ok = confirm_subscription_payment(session, sub_id, get_today_msk())
+                else:
+                    ok = advance_subscription_date(session, sub_id)
+                if ok:
                     flash("Дата следующего платежа перенесена", "success")
                 else:
                     flash("Подписка не найдена", "error")
@@ -666,10 +699,11 @@ def analytics():
         top_expenses = get_top_expenses(session, start, end, limit=5)
         daily_avg = get_daily_average(session, start, end)
         comparison = compare_with_previous(session, period)
+        source_totals = get_income_source_totals(session, start, end)
         return render_template("analytics.html", period=period, chart_data=chart_data,
                                income=int(income), expense=int(expense), balance=int(income - expense),
                                start=start, end=end, top_expenses=top_expenses,
-                               daily_avg=int(daily_avg), comparison=comparison)
+                               daily_avg=int(daily_avg), comparison=comparison, source_totals=source_totals)
     finally:
         session.close()
 
@@ -794,7 +828,7 @@ def templates_list():
                     amount = float(amount_str.replace(",", "."))
                 except ValueError:
                     amount = 0
-                if not name or amount <= 0:
+                if not name or not math.isfinite(amount) or amount <= 0:
                     flash("Укажите название и сумму", "error")
                     return redirect(url_for("web.templates_list"))
                 add_template(session, name=name, amount=amount, category=category)
@@ -891,8 +925,9 @@ def worklog():
                     hours = float(hours_str.replace(",", "."))
                 except ValueError:
                     hours = 0
-                if hours <= 0 and status != "Sick":
-                    flash("Укажите часы", "error")
+                max_hours = float(get_config_param(session, "MaxDailyHours") or 24)
+                if hours < 0 or hours > min(24, max_hours):
+                    flash(f"Часы должны быть от 0 до {min(24, max_hours):g}", "error")
                     return redirect(url_for("web.worklog", month=month_arg))
                 if status == "Sick":
                     hours = 0
@@ -956,7 +991,8 @@ def more():
 def settings():
     session = get_session()
     try:
-        config_keys = ["FixedSalary", "PayDay1", "PayDay2", "WorkHoursNorm",
+        config_keys = ["FixedSalary", "PayDay1", "PayDay2", "WorkHoursNorm", "FullDayHours", "MaxDailyHours",
+                       "WeekendSeparateRate", "WeekendHourRate", "SickEnabled", "SickHourRate", "PaidSickHours",
                         "LargeExpenseThreshold", "QuietHoursStart", "QuietHoursEnd", "ChatID"]
         if request.method == "POST":
             action = request.form.get("action")
@@ -973,6 +1009,8 @@ def settings():
                 return redirect(url_for("web.settings"))
             for k in config_keys:
                 v = request.form.get(k)
+                if k in ("WeekendSeparateRate", "SickEnabled") and v is None:
+                    v = "0"
                 if v is not None:
                     set_config_param(session, k, str(v).strip() or "")
             flash("Настройки сохранены", "success")
@@ -1043,9 +1081,10 @@ def import_data():
                 entry_type = "IncomeSecond"
             if has_finance_duplicate(session, date_str, amount):
                 continue
-            add_finance_entry(session, date_str, entry_type, amount, r.get("category_bank", "Импорт"), r.get("description", ""))
+            add_finance_entry(session, date_str, entry_type, amount, r.get("category_bank", "Импорт"), r.get("description", ""), commit=False)
             added += 1
         if added:
+            session.commit()
             invalidate_status()
             invalidate_budget()
         flash(f"Импортировано {added} записей", "success")
@@ -1181,8 +1220,10 @@ def orders_add_bulk():
                 date_str = f"{today[:8]}{int(date_raw):02d}"
             else:
                 date_str = date_raw[:10]
-            add_order(session, date_str, desc, amount)
+            add_order(session, date_str, desc, amount, commit=False)
             added += 1
+        if added:
+            session.commit()
         flash(f"Добавлено {added} заказов", "success")
     finally:
         session.close()
@@ -1211,8 +1252,10 @@ def worklog_add_bulk():
         dates = _parse_date_input(text, today)
         for date_str in dates:
             hour_rate = calc_hour_rate_snapshot_for_date(date_str, session)
-            add_work_log(session, date_str, "Main", hours, "Work", hour_rate)
+            add_work_log(session, date_str, "Main", hours, "Work", hour_rate, commit=False)
             added += 1
+        if added:
+            session.commit()
         flash(f"Добавлено {added} записей", "success")
     finally:
         session.close()

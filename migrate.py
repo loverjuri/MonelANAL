@@ -3,6 +3,14 @@ from db.models import engine
 from sqlalchemy import text
 
 MIGRATIONS = [
+    "ALTER TABLE finance ADD COLUMN source VARCHAR(128) DEFAULT ''",
+    "ALTER TABLE finance ADD COLUMN income_tag VARCHAR(128) DEFAULT ''",
+    "ALTER TABLE calculations ADD COLUMN source VARCHAR(128) DEFAULT 'Main'",
+    "CREATE TABLE IF NOT EXISTS income_sources (id VARCHAR(36) PRIMARY KEY, name VARCHAR(128) UNIQUE NOT NULL, source_type VARCHAR(32) DEFAULT 'manual', hourly_rate REAL DEFAULT 0, weekend_hour_rate REAL DEFAULT 0, use_weekend_rate INTEGER DEFAULT 0, full_day_hours REAL DEFAULT 11, max_daily_hours REAL DEFAULT 24, sick_enabled INTEGER DEFAULT 0, sick_hour_rate REAL DEFAULT 0, paid_sick_hours REAL DEFAULT 0, is_active INTEGER DEFAULT 1)",
+    "ALTER TABLE subscriptions ADD COLUMN requires_confirmation INTEGER DEFAULT 1",
+    "ALTER TABLE subscriptions ADD COLUMN last_reminder_date VARCHAR(10) DEFAULT ''",
+    "ALTER TABLE subscriptions ADD COLUMN source VARCHAR(128) DEFAULT ''",
+    "CREATE TABLE IF NOT EXISTS ip_savings (id VARCHAR(36) PRIMARY KEY, date VARCHAR(10) NOT NULL, revenue_amount REAL NOT NULL, reserve_amount REAL NOT NULL, tag VARCHAR(128) DEFAULT '', comment TEXT DEFAULT '')",
     "CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp DATETIME, level VARCHAR(16), message TEXT)",
     "ALTER TABLE finance ADD COLUMN is_deleted INTEGER DEFAULT 0",
     "ALTER TABLE finance ADD COLUMN exclude_from_budget INTEGER DEFAULT 0",
@@ -27,6 +35,14 @@ MIGRATIONS = [
         created_at DATETIME
     )""",
     "ALTER TABLE users ADD COLUMN telegram_user_id VARCHAR(32)",
+    "CREATE INDEX IF NOT EXISTS ix_finance_date_type_deleted ON finance (date, type, is_deleted)",
+    "CREATE INDEX IF NOT EXISTS ix_finance_category_period ON finance (date, category, is_deleted)",
+    "CREATE TABLE IF NOT EXISTS processed_updates (update_id INTEGER PRIMARY KEY, processed_at DATETIME NOT NULL)",
+    "CREATE INDEX IF NOT EXISTS ix_processed_updates_processed_at ON processed_updates (processed_at)",
+    "CREATE INDEX IF NOT EXISTS ix_worklog_date_job_status ON worklog (date, job_type, status)",
+    "CREATE INDEX IF NOT EXISTS ix_orders_date ON orders (date)",
+    "CREATE INDEX IF NOT EXISTS ix_state_chat_id ON state (chat_id)",
+    "CREATE INDEX IF NOT EXISTS ix_subscriptions_due ON subscriptions (next_date, is_active, auto_create_expense)",
 ]
 
 conn = engine.connect()

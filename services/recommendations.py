@@ -59,10 +59,10 @@ def get_seasonal_comparison(session, category: str) -> dict | None:
     return {"category": category, "current": cur, "last_year": prev, "pct_change": pct}
 
 
-def get_template_advice(session) -> list[str]:
+def get_template_advice(session, budget_status=None) -> list[str]:
     """Generate rule-based advice."""
     advice = []
-    st = get_budget_status(session)
+    st = budget_status if budget_status is not None else get_budget_status(session)
     for o in st.get("over", []):
         cat = o["category"]
         over = int(o["over"])
@@ -74,16 +74,16 @@ def get_template_advice(session) -> list[str]:
     return advice
 
 
-def generate_daily_digest(session) -> str:
+def generate_daily_digest(session, budget_status=None) -> str:
     """Full daily digest with recommendations."""
     lines = []
-    st = get_budget_status(session)
+    st = budget_status if budget_status is not None else get_budget_status(session)
     over_items = st.get("over", [])
     if over_items:
         lines.append("⚠ Перерасход:")
         for o in over_items:
             lines.append(f"  {o['category']}: +{int(o['over'])} руб.")
-    advice = get_template_advice(session)
+    advice = get_template_advice(session, st)
     if advice:
         lines.append("")
         lines.append("Советы:")

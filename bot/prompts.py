@@ -6,6 +6,7 @@ from bot.telegram_api import send_message
 from bot.keyboards import (
     build_main_work_keyboard,
     build_second_job_keyboard,
+    build_income_confirmation_keyboard,
 )
 
 
@@ -41,6 +42,18 @@ def send_payday_prompt(chat_id: int):
         session.close()
 
 
+def send_main_payday_prompt(chat_id: int):
+    """On-demand main salary prompt; no calendar date restriction."""
+    session = get_session()
+    try:
+        from services.calculations import get_accrued_main_since_last_payout
+        acc = get_accrued_main_since_last_payout(session)
+        set_state(chat_id, "main_payday_amount", "0", acc)
+        send_message(chat_id, f"Основная работа: начислено {acc['main']:.2f} руб.\nСколько получили на руки?")
+    finally:
+        session.close()
+
+
 def send_reminder_main_work(chat_id: int):
     """19:00 — Reminder if no main work log for today."""
     session = get_session()
@@ -65,17 +78,29 @@ def send_reminder_second_job(chat_id: int):
 
 
 def send_subscriptions_reminder(chat_id: int):
-    """Daily — Subscriptions due in next 3 days."""
-    from db.repositories import get_subscriptions_due_soon
+    """Daily — one reminder one day before and one overdue notification."""
+    from db.repositories import get_subscriptions_due_soon, mark_overdue_subscriptions, update_subscription
     from services.calculations import get_today_msk
     session = get_session()
     try:
         today = get_today_msk()
-        subs = get_subscriptions_due_soon(session, today, 3)
+        from datetime import datetime
+        overdue = mark_overdue_subscriptions(session, today)
+        subs = get_subscriptions_due_soon(session, today, 1)
+        for s in subs:
+            if s.last_reminder_date != today:
+                update_subscription(session, s.id, last_reminder_date=today)
         if subs:
-            lines = ["Ближайшие платежи:"]
+            lines = ["Завтра ожидаются начисления:"]
             for s in subs:
                 lines.append(f"• {s.name}: {int(s.amount)} руб. — {s.next_date}")
+                if s.sub_type == "income" and s.requires_confirmation:
+                    send_message(chat_id, f"Ожидаемый доход: {s.name} — {s.amount:.2f} руб.", build_income_confirmation_keyboard(s.id))
+            send_message(chat_id, "\n".join(lines))
+        if overdue:
+            lines = ["Просроченные начисления:"]
+            for s in overdue:
+                lines.append(f"• {s.name}: {int(s.amount)} руб. (дата {s.next_date})")
             send_message(chat_id, "\n".join(lines))
     finally:
         session.close()

@@ -45,38 +45,27 @@ def verify_telegram_login(auth_data: dict) -> bool:
 
 def verify_telegram_webapp_init_data(init_data: str) -> dict | None:
     """Verify Telegram Web App initData. See core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app"""
-    from db.repositories import log_info as _log_info, log_error as _log_error
-    _s = get_session()
+    if not BOT_TOKEN or not init_data:
+        return None
     try:
-        if not BOT_TOKEN:
-            _log_error(_s, "verify_webapp: BOT_TOKEN is empty!")
-            return None
-        if not init_data:
-            _log_error(_s, "verify_webapp: initData is empty")
-            return None
-        _log_info(_s, f"verify_webapp: initData len={len(init_data)}, token_prefix={BOT_TOKEN[:8]}...")
         from urllib.parse import parse_qs
         params = parse_qs(init_data, keep_blank_values=True)
         auth_data = {k: (v[0] if v else "") for k, v in params.items()}
         received_hash = auth_data.pop("hash", None)
         if not received_hash:
-            _log_error(_s, "verify_webapp: no hash in initData")
             return None
         data_check_arr = [f"{k}={v}" for k, v in sorted(auth_data.items())]
         data_check_string = "\n".join(data_check_arr)
         secret_key = hmac.new("WebAppData".encode(), BOT_TOKEN.encode(), hashlib.sha256).digest()
         computed = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
         if not hmac.compare_digest(computed, received_hash):
-            _log_error(_s, f"verify_webapp: HMAC mismatch. computed={computed[:16]}... received={received_hash[:16]}... keys={sorted(auth_data.keys())}")
             return None
         auth_date = int(auth_data.get("auth_date", 0))
-        if auth_date and (time.time() - auth_date) > 86400:
-            _log_error(_s, f"verify_webapp: auth_date expired ({auth_date}, now={int(time.time())})")
+        if auth_date and (time.time() - auth_date < -60 or time.time() - auth_date > 86400):
             return None
-        _log_info(_s, f"verify_webapp: OK, keys={sorted(auth_data.keys())}")
         return auth_data
-    finally:
-        _s.close()
+    except (TypeError, ValueError):
+        return None
 
 
 def verify_recaptcha(token: str) -> bool:
@@ -208,17 +197,11 @@ def telegram_login():
             return jsonify({"ok": True, "redirect": url_for("web.dashboard", _external=False)})
         return redirect(url_for("web.dashboard"))
     if request.method == "POST":
-        from db.repositories import log_info as _log_info
-        _ds = get_session()
-        try:
-            content_type = request.content_type or ""
-            if "json" in content_type:
-                init_data = (request.get_json(silent=True) or {}).get("initData", "")
-            else:
-                init_data = request.form.get("initData", "")
-            _log_info(_ds, f"telegram-login POST: ct={content_type}, initData_len={len(init_data)}")
-        finally:
-            _ds.close()
+        content_type = request.content_type or ""
+        if "json" in content_type:
+            init_data = (request.get_json(silent=True) or {}).get("initData", "")
+        else:
+            init_data = request.form.get("initData", "")
         if not init_data:
             log.warning("telegram-login POST: no initData (ct=%s)", content_type)
             return jsonify({"ok": False, "error": "No initData"}), 400

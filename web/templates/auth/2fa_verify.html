@@ -12,6 +12,7 @@
     <h1>Код из приложения</h1>
     <p style="color: var(--text-muted);">Введите 6-значный код из Google Authenticator или другого приложения.</p>
     <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="form-group">
         <input type="text" name="code" maxlength="6" pattern="[0-9]*" inputmode="numeric"
                placeholder="000000" autocomplete="one-time-code" autofocus

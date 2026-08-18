@@ -1,6 +1,7 @@
 """Business logic for salary accrual, budget, pay dates."""
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
+from sqlalchemy import func
 
 from db.repositories import (
     get_config_param,
@@ -27,9 +28,19 @@ def _get_pay_day2(session) -> int:
     return int(v) if v else 25
 
 
-def _get_work_hours_norm(session) -> int:
+def _get_work_hours_norm(session) -> float:
     v = get_config_param(session, "WorkHoursNorm")
-    return int(v) if v else 8
+    return float(v) if v else 11
+
+
+def get_full_day_hours(session) -> float:
+    v = get_config_param(session, "FullDayHours")
+    return float(v) if v else 11
+
+
+def get_max_daily_hours(session) -> float:
+    v = get_config_param(session, "MaxDailyHours")
+    return float(v) if v else 24
 
 
 def format_date_for_compare(d) -> str:
@@ -90,6 +101,18 @@ def get_accrued_main_for_period(start_str: str, end_str: str, session) -> float:
     return total
 
 
+def get_accrued_main_since_last_payout(session, end_str: str | None = None) -> dict:
+    from db.repositories import get_last_main_payday
+    start = get_last_main_payday(session)
+    if start:
+        start = add_days(start, 1)
+    else:
+        start = "0001-01-01"
+    end = end_str or get_today_msk()
+    return {"periodStart": start, "periodEnd": end,
+            "main": get_accrued_main_for_period(start, end, session)}
+
+
 def get_accrued_second_for_period(start_str: str, end_str: str, session) -> float:
     return sum_orders_for_period(session, start_str, end_str)
 
@@ -136,22 +159,37 @@ TYPE_EXPENSE = "Expense"
 
 
 def get_budget_balance(session) -> float:
-    rows = get_finance_for_period(session, "2000-01-01", "2099-12-31")
-    income = expense = 0
-    for r in rows:
-        amt = r.amount or 0
-        if r.type in (TYPE_INCOME_SALARY, TYPE_INCOME_SECOND):
-            income += amt
-        elif r.type == TYPE_EXPENSE:
-            expense += amt
-    return income - expense
+    from db.models import Finance
+    income = session.query(func.coalesce(func.sum(Finance.amount), 0)).filter(
+        Finance.is_deleted == False,
+        Finance.type.in_((TYPE_INCOME_SALARY, TYPE_INCOME_SECOND)),
+    ).scalar() or 0
+    expense = session.query(func.coalesce(func.sum(Finance.amount), 0)).filter(
+        Finance.is_deleted == False, Finance.type == TYPE_EXPENSE,
+    ).scalar() or 0
+    return float(income - expense)
 
 
-def calc_hour_rate_snapshot_for_date(date_str: str, session) -> float:
+def get_income_source_totals(session, start_str: str, end_str: str) -> dict:
+    """Actual income totals grouped by configured source."""
+    rows = get_finance_for_period(session, start_str, end_str)
+    result = {}
+    for row in rows:
+        if row.type in (TYPE_INCOME_SALARY, TYPE_INCOME_SECOND, "IncomeBonus"):
+            key = getattr(row, "source", "") or row.category or "Без источника"
+            result[key] = result.get(key, 0) + float(row.amount or 0)
+    return result
+
+
+def calc_hour_rate_snapshot_for_date(date_str: str, session, is_weekend: bool = False) -> float:
     """FixedSalary / MonthNormHours for the month of date_str."""
     from services.prod_calendar import get_month_norm_hours_for_date
     norm = get_month_norm_hours_for_date(date_str, session)
     if norm <= 0:
         norm = _get_work_hours_norm(session) * 21
+    if is_weekend and get_config_param(session, "WeekendSeparateRate") == "1":
+        weekend = get_config_param(session, "WeekendHourRate")
+        if weekend:
+            return float(weekend)
     salary = _get_fixed_salary(session)
     return salary / norm if norm else 0

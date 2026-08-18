@@ -2,6 +2,7 @@
 {% block title %}Аналитика — MonelANAL{% endblock %}
 {% block content %}
 <h1>Аналитика</h1>
+{% if source_totals %}<div class="card"><h2>Доходы по источникам</h2>{% for name, amount in source_totals.items() %}<p>{{ name }}: <strong>{{ amount|int }} руб.</strong></p>{% endfor %}</div>{% endif %}
 
 <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px;">
   {% for p, label in [('week', 'Неделя'), ('month', 'Месяц'), ('quarter', 'Квартал'), ('year', 'Год')] %}

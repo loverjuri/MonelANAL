@@ -17,16 +17,13 @@ ACHIEVEMENTS = {
 def get_streak(session) -> int:
     """Days in a row with at least one finance entry."""
     today = get_today_msk()
-    streak = 0
+    from db.models import Finance
     dt = datetime.strptime(today, "%Y-%m-%d")
-    for i in range(365):
-        d = (dt - timedelta(days=i)).strftime("%Y-%m-%d")
-        rows = get_finance_for_period(session, d, d)
-        if rows:
-            streak += 1
-        else:
-            break
-    return streak
+    since = (dt - timedelta(days=365)).strftime("%Y-%m-%d")
+    dates = {row[0] for row in session.query(Finance.date).filter(
+        Finance.is_deleted == False, Finance.date >= since, Finance.date <= today
+    ).distinct().all()}
+    return next((i for i in range(366) if (dt - timedelta(days=i)).strftime("%Y-%m-%d") not in dates), 366)
 
 
 def check_achievements(session) -> list[str]:
@@ -35,8 +32,8 @@ def check_achievements(session) -> list[str]:
     unlocked = {a.code for a in session.query(Achievement).all()}
     new = []
     if "first_expense" not in unlocked:
-        rows = get_finance_for_period(session, "2000-01-01", "2099-12-31")
-        if any(r.type == "Expense" for r in rows):
+        from db.models import Finance
+        if session.query(Finance.id).filter(Finance.type == "Expense", Finance.is_deleted == False).first():
             new.append("first_expense")
     streak = get_streak(session)
     if streak >= 7 and "streak_7" not in unlocked:

@@ -68,5 +68,8 @@ RECAPTCHA_SECRET_KEY: str = os.environ.get("RECAPTCHA_SECRET_KEY", "").strip()
 # Flask secret (required for sessions)
 SECRET_KEY: str = os.environ.get("SECRET_KEY", "").strip() or "dev-secret-change-in-prod"
 
+# Local-only convenience mode. Never enable in production.
+DEV_MODE: bool = os.environ.get("DEV_MODE", "0").strip().lower() in ("1", "true", "yes", "on")
+
 # Timezone
 TIMEZONE = "Europe/Moscow"

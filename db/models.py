@@ -3,7 +3,7 @@ from datetime import datetime
 import uuid
 from sqlalchemy import (
     Column, String, Integer, Float, Boolean, DateTime, Text,
-    create_engine
+    create_engine, Index, event
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
 
@@ -34,6 +34,7 @@ class WorkLog(Base):
     sick_day_index = Column(Integer)
     is_paid = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    __table_args__ = (Index("ix_worklog_date_job_status", "date", "job_type", "status"),)
 
 
 class Order(Base):
@@ -43,6 +44,7 @@ class Order(Base):
     description = Column(Text)
     amount = Column(Float, default=0)
     status = Column(String(32), default="New")
+    __table_args__ = (Index("ix_orders_date", "date"),)
 
 
 class Finance(Base):
@@ -54,8 +56,14 @@ class Finance(Base):
     category = Column(String(64))
     comment = Column(Text)
     tags = Column(Text, default="")
+    source = Column(String(128), default="")
+    income_tag = Column(String(128), default="")
     exclude_from_budget = Column(Boolean, default=False)
     is_deleted = Column(Boolean, default=False)
+    __table_args__ = (
+        Index("ix_finance_date_type_deleted", "date", "type", "is_deleted"),
+        Index("ix_finance_category_period", "date", "category", "is_deleted"),
+    )
 
 
 class AuditLog(Base):
@@ -79,6 +87,15 @@ class State(Base):
     step = Column(String(64), nullable=False)
     payload = Column(Text, default="{}")
     updated_at = Column(DateTime, default=datetime.utcnow)
+    __table_args__ = (Index("ix_state_chat_id", "chat_id"),)
+
+
+class ProcessedUpdate(Base):
+    """Telegram update ids already accepted by the webhook."""
+    __tablename__ = "processed_updates"
+    update_id = Column(Integer, primary_key=True)
+    processed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    __table_args__ = (Index("ix_processed_updates_processed_at", "processed_at"),)
 
 
 class Log(Base):
@@ -97,6 +114,35 @@ class Calculation(Base):
     accrued_salary = Column(Float)
     received_salary = Column(Float)
     difference = Column(Float)
+    source = Column(String(128), default="Main")
+
+
+class IncomeSource(Base):
+    """Configurable work/income source (main job, Avito, client, etc.)."""
+    __tablename__ = "income_sources"
+    id = Column(String(36), primary_key=True)
+    name = Column(String(128), unique=True, nullable=False)
+    source_type = Column(String(32), default="manual")
+    hourly_rate = Column(Float, default=0)
+    weekend_hour_rate = Column(Float, default=0)
+    use_weekend_rate = Column(Boolean, default=False)
+    full_day_hours = Column(Float, default=11)
+    max_daily_hours = Column(Float, default=24)
+    sick_enabled = Column(Boolean, default=False)
+    sick_hour_rate = Column(Float, default=0)
+    paid_sick_hours = Column(Float, default=0)
+    is_active = Column(Boolean, default=True)
+
+
+class IPSavings(Base):
+    """Separate 1% reserve from manually entered IP revenue."""
+    __tablename__ = "ip_savings"
+    id = Column(String(36), primary_key=True)
+    date = Column(String(10), nullable=False)
+    revenue_amount = Column(Float, nullable=False)
+    reserve_amount = Column(Float, nullable=False)
+    tag = Column(String(128), default="")
+    comment = Column(Text, default="")
 
 
 class BudgetPlan(Base):
@@ -142,7 +188,11 @@ class Subscription(Base):
     group = Column(String(32), default="other")  # streaming/cloud/bank/other
     sub_type = Column(String(16), default="expense")  # expense / income
     is_overdue = Column(Boolean, default=False)
+    requires_confirmation = Column(Boolean, default=True)
+    last_reminder_date = Column(String(10), default="")
+    source = Column(String(128), default="")
     created_at = Column(DateTime, default=datetime.utcnow)
+    __table_args__ = (Index("ix_subscriptions_due", "next_date", "is_active", "auto_create_expense"),)
 
 
 class Debt(Base):
@@ -242,8 +292,18 @@ class Achievement(Base):
 engine = create_engine(
     f"sqlite:///{DB_PATH}",
     echo=False,
-    connect_args={"check_same_thread": False},
+    connect_args={"check_same_thread": False, "timeout": 5},
 )
+
+
+@event.listens_for(engine, "connect")
+def _configure_sqlite(dbapi_connection, connection_record):
+    """Reduce lock contention for the small SQLite database."""
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA busy_timeout=5000")
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.close()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
