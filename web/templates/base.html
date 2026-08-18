@@ -27,7 +27,7 @@
     <a href="{{ url_for('web.expense') }}" class="{% if request.endpoint == 'web.expense' %}active{% endif %}"><span class="icon">💸</span>Расход</a>
     <a href="{{ url_for('web.budget') }}" class="{% if request.endpoint == 'web.budget' %}active{% endif %}"><span class="icon">💰</span>Бюджет</a>
     <a href="{{ url_for('web.goals') }}" class="{% if request.endpoint == 'web.goals' %}active{% endif %}"><span class="icon">🎯</span>Цели</a>
-    <a href="{{ url_for('web.more') }}" class="{% if request.endpoint == 'web.more' %}active{% endif %}"><span class="icon">⋯</span>Ещё</a>
+    <a href="{{ url_for('web.more') }}" class="{% if request.endpoint == 'web.more' %}active{% endif %}"><span class="icon">☰</span>Меню</a>
   </nav>
   {% endblock %}
   <script>

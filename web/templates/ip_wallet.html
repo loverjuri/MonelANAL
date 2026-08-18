@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}ИП и копилка{% endblock %}
+{% block content %}
+<div class="page-header"><a href="{{ url_for('web.more') }}" class="btn btn-back">←</a><h1>ИП и копилка</h1></div>
+<div class="card"><h2>Копилка ИП</h2><p style="font-size: 28px; font-weight: 700;">{{ '%.2f'|format(total) }} ₽</p><p class="form-hint">Резерв: 1% только от доходов ИП</p></div>
+<div class="card"><h2>Перевести в общий баланс</h2><form method="post"><div class="form-group"><label>Сумма</label><input name="amount" type="number" step="0.01" min="0.01" max="{{ total }}" required></div><div class="form-group"><label>Дата</label><input name="date" type="date" value="{{ today }}"></div><div class="form-group"><label>Комментарий</label><input name="comment"></div><button class="btn" type="submit">Перевести</button></form></div>
+<div class="card"><h2>История</h2>{% for row in operations %}<div class="history-card"><strong>{{ '+' if row.type == 'reserve' else '-' }}{{ '%.2f'|format(row.amount) }} ₽</strong><span class="meta">{{ row.date }} · {{ row.comment }}</span></div>{% else %}<p class="form-hint">Операций пока нет</p>{% endfor %}</div>
+{% endblock %}

@@ -58,6 +58,7 @@ class Finance(Base):
     tags = Column(Text, default="")
     source = Column(String(128), default="")
     income_tag = Column(String(128), default="")
+    account_id = Column(String(36), default="")
     exclude_from_budget = Column(Boolean, default=False)
     is_deleted = Column(Boolean, default=False)
     __table_args__ = (
@@ -142,6 +143,38 @@ class IPSavings(Base):
     revenue_amount = Column(Float, nullable=False)
     reserve_amount = Column(Float, nullable=False)
     tag = Column(String(128), default="")
+    comment = Column(Text, default="")
+
+
+class Account(Base):
+    """Real money account/wallet used for balances and transfers."""
+    __tablename__ = "accounts"
+    id = Column(String(36), primary_key=True)
+    name = Column(String(128), unique=True, nullable=False)
+    account_type = Column(String(32), default="card")
+    opening_balance = Column(Float, default=0)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class AccountTransfer(Base):
+    """Neutral movement between two real accounts."""
+    __tablename__ = "account_transfers"
+    id = Column(String(36), primary_key=True)
+    date = Column(String(10), nullable=False)
+    from_account_id = Column(String(36), nullable=False)
+    to_account_id = Column(String(36), nullable=False)
+    amount = Column(Float, nullable=False)
+    comment = Column(Text, default="")
+
+
+class IPWalletOperation(Base):
+    """Movement of real money in the separate IP reserve."""
+    __tablename__ = "ip_wallet_operations"
+    id = Column(String(36), primary_key=True)
+    date = Column(String(10), nullable=False)
+    operation_type = Column(String(16), nullable=False)  # reserve / withdrawal
+    amount = Column(Float, nullable=False)
     comment = Column(Text, default="")
 
 

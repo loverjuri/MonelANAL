@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Подписки — MonelANAL{% endblock %}
 {% block content %}
-<h1>Подписки</h1>
+<h1>{{ 'Регулярные доходы' if selected_type == 'income' else 'Регулярные расходы' if selected_type == 'expense' else 'Регулярные операции' }}</h1>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><a class="btn btn-secondary" href="{{ url_for('web.subscriptions', type='income') }}">Доходы</a><a class="btn btn-secondary" href="{{ url_for('web.subscriptions', type='expense') }}">Расходы</a><a class="btn btn-secondary" href="{{ url_for('web.subscriptions') }}">Все</a></div>
 
 <div class="card">
-  <h2>Добавить подписку</h2>
+  <h2>Добавить регулярную операцию</h2>
   <form method="post">
     <input type="hidden" name="action" value="add">
     <div class="form-group">

@@ -84,6 +84,12 @@ from db.repositories import (
     get_ip_savings_total,
     confirm_subscription_payment,
     get_income_sources,
+    add_income_source, get_income_source, update_income_source, delete_income_source,
+    add_account, get_accounts, get_account_balances, update_account, delete_account,
+    add_account_transfer, get_account_transfers,
+    get_ip_wallet_operations,
+    withdraw_ip_savings,
+    delete_debt,
 )
 from services.calculations import (
     get_today_msk,
@@ -132,6 +138,9 @@ def _get_status_data(session):
     start_month = today[:7] + "-01"
     second_month = get_accrued_second_for_period(start_month, today, session)
     debt_sum = get_debt_summary(session)
+    ip_total = get_ip_savings_total(session)
+    account_balances = get_account_balances(session)
+    overdue_income = len([s for s in get_active_subscriptions(session) if s.sub_type == "income" and s.is_overdue])
     return {
         "accrued_main": int(acc["accruedMain"]),
         "accrued_second_month": int(second_month),
@@ -139,6 +148,9 @@ def _get_status_data(session):
         "next_pay": next_pay,
         "debt_owe": int(debt_sum["owe"]),
         "debt_lent": int(debt_sum["lent"]),
+        "ip_savings": round(ip_total, 2),
+        "accounts_total": round(sum(account_balances.values()), 2),
+        "overdue_income": overdue_income,
     }
 
 
@@ -186,7 +198,8 @@ def dashboard():
         advice = get_template_advice(session, budget_status)
         digest = generate_daily_digest(session, budget_status)
         return render_template("dashboard.html", status=data, recent=recent,
-                               advice=advice, digest=digest)
+                               advice=advice, digest=digest,
+                               ip_savings=get_ip_savings_total(session))
     finally:
         session.close()
 
@@ -214,14 +227,15 @@ def expense():
                 last_exp = next((r for r in get_finance_history(session, limit=10) if r.type == "Expense"), None)
                 last_cat = last_exp.category if last_exp and last_exp.category in EXPENSE_CATEGORIES else "Прочее"
                 return render_template("expense.html", categories=EXPENSE_CATEGORIES, today=today, last_category=last_cat)
-            add_finance_entry(session, date_str, "Expense", amount, category, comment)
+            add_finance_entry(session, date_str, "Expense", amount, category, comment,
+                              account_id=request.form.get("account_id") or "")
             invalidate_status()
             invalidate_budget()
             flash(f"Расход {int(amount)} руб. записан", "success")
             return redirect(url_for("web.dashboard"))
         last_exp = next((r for r in get_finance_history(session, limit=10) if r.type == "Expense"), None)
         last_category = last_exp.category if last_exp and last_exp.category in EXPENSE_CATEGORIES else "Прочее"
-        return render_template("expense.html", categories=EXPENSE_CATEGORIES, today=today, last_category=last_category)
+        return render_template("expense.html", categories=EXPENSE_CATEGORIES, today=today, last_category=last_category, accounts=get_accounts(session))
     finally:
         session.close()
 
@@ -268,10 +282,10 @@ def income():
                 amount = float(amount_str)
             except ValueError:
                 flash("Введите корректную сумму", "error")
-                return render_template("income.html", today=today)
+                return render_template("income.html", today=today, ip_savings=get_ip_savings_total(session), income_sources=get_income_sources(session))
             if not math.isfinite(amount) or amount <= 0:
                 flash("Сумма должна быть положительной", "error")
-                return render_template("income.html", today=today)
+                return render_template("income.html", today=today, ip_savings=get_ip_savings_total(session), income_sources=get_income_sources(session))
             source = (request.form.get("source") or "Вторая работа").strip()
             tag = (request.form.get("income_tag") or "").strip()
             if source.upper() == "ИП":
@@ -279,13 +293,13 @@ def income():
                 flash(f"Доход ИП записан. В копилку добавлено {reserve:.2f} руб.", "success")
             else:
                 add_finance_entry(session, date_str, "IncomeSecond", amount, source, comment,
-                                  source=source, income_tag=tag)
+                                  source=source, income_tag=tag, account_id=request.form.get("account_id") or "")
                 flash(f"Доход {int(amount)} руб. записан", "success")
             invalidate_status()
             invalidate_budget()
             return redirect(url_for("web.dashboard"))
         return render_template("income.html", today=today, ip_savings=get_ip_savings_total(session),
-                               income_sources=get_income_sources(session))
+                               income_sources=get_income_sources(session), accounts=get_accounts(session))
     finally:
         session.close()
 
@@ -535,6 +549,13 @@ def debts():
                     invalidate_status()
                     flash("Долг обновлён", "success")
                 return redirect(url_for("web.debts"))
+            elif action == "delete":
+                debt_id = request.form.get("debt_id")
+                if debt_id and delete_debt(session, debt_id):
+                    invalidate_status()
+                    flash("Долг удалён вместе с историей платежей", "success")
+                else:
+                    flash("Долг не найден", "error")
             return redirect(url_for("web.debts"))
         debts_list = get_active_debts(session)
         summary = get_debt_summary(session)
@@ -654,11 +675,15 @@ def subscriptions():
                     update_subscription(session, sub_id, is_active=True)
                     flash("Подписка возобновлена", "success")
             return redirect(url_for("web.subscriptions"))
+        selected_type = request.args.get("type") or request.form.get("sub_type") or "all"
         subs = get_active_subscriptions(session)
+        if selected_type in ("income", "expense"):
+            subs = [s for s in subs if s.sub_type == selected_type]
         inactive = get_inactive_subscriptions(session)
         overdue = get_overdue_subscriptions(session)
         return render_template("subscriptions.html", subscriptions=subs, inactive=inactive,
-                               overdue=overdue, now=get_today_msk(), categories=EXPENSE_CATEGORIES)
+                               overdue=overdue, now=get_today_msk(), categories=EXPENSE_CATEGORIES,
+                               selected_type=selected_type)
     finally:
         session.close()
 
@@ -984,6 +1009,75 @@ def worklog_edit_form(wl_id):
 def more():
     """More menu: debts, subscriptions, analytics, history, settings."""
     return render_template("more.html")
+
+
+@web_bp.route("/ip", methods=["GET", "POST"])
+@login_required
+def ip_wallet():
+    session = get_session()
+    try:
+        if request.method == "POST":
+            try:
+                amount = float((request.form.get("amount") or "0").replace(",", "."))
+            except ValueError:
+                amount = 0
+            if withdraw_ip_savings(session, request.form.get("date") or get_today_msk(), amount,
+                                   request.form.get("comment") or ""):
+                invalidate_status(); invalidate_budget(); flash("Сумма переведена в общий баланс", "success")
+            else:
+                flash("Недостаточно денег в копилке ИП или некорректная сумма", "error")
+            return redirect(url_for("web.ip_wallet"))
+        return render_template("ip_wallet.html", total=get_ip_savings_total(session),
+                               operations=get_ip_wallet_operations(session), today=get_today_msk())
+    finally:
+        session.close()
+
+
+@web_bp.route("/income-sources", methods=["GET", "POST"])
+@login_required
+def income_sources():
+    session = get_session()
+    try:
+        if request.method == "POST":
+            action = request.form.get("action")
+            if action == "add":
+                name = (request.form.get("name") or "").strip()
+                if name: add_income_source(session, name, request.form.get("source_type") or "manual")
+            elif action == "edit":
+                source_id = request.form.get("source_id")
+                name = (request.form.get("name") or "").strip()
+                if source_id and name: update_income_source(session, source_id, name=name)
+            elif action == "delete": delete_income_source(session, request.form.get("source_id"))
+            return redirect(url_for("web.income_sources"))
+        return render_template("income_sources.html", sources=get_income_sources(session, active_only=False))
+    finally: session.close()
+
+
+@web_bp.route("/accounts", methods=["GET", "POST"])
+@login_required
+def accounts():
+    session = get_session()
+    try:
+        if request.method == "POST":
+            action = request.form.get("action")
+            if action == "add":
+                name = (request.form.get("name") or "").strip()
+                try: opening = float((request.form.get("opening_balance") or "0").replace(",", "."))
+                except ValueError: opening = 0
+                if name: add_account(session, name, request.form.get("account_type") or "card", opening); flash("Счёт добавлен", "success")
+            elif action == "transfer":
+                try: amount = float((request.form.get("amount") or "0").replace(",", "."))
+                except ValueError: amount = 0
+                if add_account_transfer(session, request.form.get("date") or get_today_msk(), request.form.get("from_account_id"), request.form.get("to_account_id"), amount, request.form.get("comment") or ""):
+                    flash("Перевод выполнен", "success")
+                else: flash("Не удалось выполнить перевод", "error")
+            elif action == "delete":
+                if delete_account(session, request.form.get("account_id")): flash("Счёт удалён", "success")
+                else: flash("Счёт нельзя удалить: он содержит операции", "error")
+            return redirect(url_for("web.accounts"))
+        account_rows = get_accounts(session); balances = get_account_balances(session)
+        return render_template("accounts.html", accounts=account_rows, balances=balances, transfers=get_account_transfers(session), today=get_today_msk())
+    finally: session.close()
 
 
 @web_bp.route("/settings", methods=["GET", "POST"])

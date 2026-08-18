@@ -14,6 +14,8 @@ from db.models import (
     AuditLog, User,
     IncomeSource,
     IPSavings,
+    IPWalletOperation,
+    Account, AccountTransfer,
 )
 
 TZ = ZoneInfo("Europe/Moscow")
@@ -261,6 +263,7 @@ def add_finance_entry(
     exclude_from_budget: bool = False,
     source: str = "",
     income_tag: str = "",
+    account_id: str = "",
     commit: bool = True,
 ) -> str:
     rid = generate_id()
@@ -274,6 +277,7 @@ def add_finance_entry(
         exclude_from_budget=exclude_from_budget,
         source=source or "",
         income_tag=income_tag or "",
+        account_id=account_id or "",
     ))
     if commit:
         session.commit()
@@ -367,8 +371,112 @@ def get_income_sources(session: Session, active_only: bool = True) -> list:
     return q.order_by(IncomeSource.name).all()
 
 
+def get_income_source(session: Session, source_id: str):
+    return session.query(IncomeSource).filter(IncomeSource.id == source_id).first()
+
+
+def update_income_source(session: Session, source_id: str, **kwargs) -> bool:
+    row = get_income_source(session, source_id)
+    if not row: return False
+    for key, value in kwargs.items():
+        if hasattr(row, key): setattr(row, key, value)
+    session.commit(); return True
+
+
+def delete_income_source(session: Session, source_id: str) -> bool:
+    row = get_income_source(session, source_id)
+    if not row: return False
+    row.is_active = False; session.commit(); return True
+
+
 def get_ip_savings_total(session: Session) -> float:
-    return float(session.query(func.coalesce(func.sum(IPSavings.reserve_amount), 0)).scalar() or 0)
+    reserved = session.query(func.coalesce(func.sum(IPSavings.reserve_amount), 0)).scalar() or 0
+    withdrawn = session.query(func.coalesce(func.sum(IPWalletOperation.amount), 0)).filter(
+        IPWalletOperation.operation_type == "withdrawal").scalar() or 0
+    return max(0.0, float(reserved) - float(withdrawn))
+
+
+def get_ip_wallet_operations(session: Session, limit: int = 100) -> list:
+    reserves = session.query(IPSavings).all()
+    withdrawals = session.query(IPWalletOperation).all()
+    rows = [{"id": x.id, "date": x.date, "type": "reserve", "amount": x.reserve_amount,
+             "comment": x.comment or x.tag or "1% от дохода ИП"} for x in reserves]
+    rows += [{"id": x.id, "date": x.date, "type": x.operation_type, "amount": x.amount,
+              "comment": x.comment or "Перевод в общий баланс"} for x in withdrawals]
+    return sorted(rows, key=lambda x: (x["date"], x["id"]), reverse=True)[:limit]
+
+
+def add_account(session: Session, name: str, account_type: str = "card", opening_balance: float = 0) -> str:
+    row = Account(id=generate_id(), name=name.strip(), account_type=account_type or "card",
+                  opening_balance=float(opening_balance or 0))
+    session.add(row); session.commit(); return row.id
+
+
+def get_accounts(session: Session, active_only: bool = True) -> list:
+    q = session.query(Account)
+    if active_only: q = q.filter(Account.is_active == True)
+    return q.order_by(Account.name).all()
+
+
+def get_account(session: Session, account_id: str):
+    return session.query(Account).filter(Account.id == account_id).first()
+
+
+def get_account_balances(session: Session) -> dict:
+    accounts = get_accounts(session)
+    result = {a.id: float(a.opening_balance or 0) for a in accounts}
+    for row in session.query(Finance).filter(Finance.is_deleted == False, Finance.account_id != "").all():
+        if row.account_id in result:
+            sign = -1 if row.type == "Expense" else 1
+            result[row.account_id] += sign * float(row.amount or 0)
+    for row in session.query(AccountTransfer).all():
+        if row.from_account_id in result: result[row.from_account_id] -= row.amount
+        if row.to_account_id in result: result[row.to_account_id] += row.amount
+    return result
+
+
+def update_account(session: Session, account_id: str, **kwargs) -> bool:
+    row = get_account(session, account_id)
+    if not row: return False
+    for key, value in kwargs.items():
+        if hasattr(row, key): setattr(row, key, value)
+    session.commit(); return True
+
+
+def delete_account(session: Session, account_id: str) -> bool:
+    row = get_account(session, account_id)
+    if not row: return False
+    if session.query(Finance).filter(Finance.account_id == account_id, Finance.is_deleted == False).first():
+        return False
+    session.delete(row); session.commit(); return True
+
+
+def add_account_transfer(session: Session, date_str: str, from_account_id: str,
+                         to_account_id: str, amount: float, comment: str = "") -> bool:
+    if from_account_id == to_account_id or amount <= 0:
+        return False
+    if not get_account(session, from_account_id) or not get_account(session, to_account_id):
+        return False
+    session.add(AccountTransfer(id=generate_id(), date=date_str[:10],
+                                from_account_id=from_account_id, to_account_id=to_account_id,
+                                amount=float(amount), comment=comment or ""))
+    session.commit(); return True
+
+
+def get_account_transfers(session: Session, limit: int = 100) -> list:
+    return session.query(AccountTransfer).order_by(AccountTransfer.date.desc()).limit(limit).all()
+
+
+def withdraw_ip_savings(session: Session, date_str: str, amount: float, comment: str = "") -> bool:
+    amount = float(amount)
+    if amount <= 0 or amount > get_ip_savings_total(session) + 0.01:
+        return False
+    add_finance_entry(session, date_str, "IncomeIPReserve", amount, "Копилка ИП",
+                      comment or "Перевод из копилки ИП в общий баланс", source="ИП", commit=False)
+    session.add(IPWalletOperation(id=generate_id(), date=date_str[:10], operation_type="withdrawal",
+                                  amount=amount, comment=comment or "Перевод в общий баланс"))
+    session.commit()
+    return True
 
 
 # State
@@ -831,6 +939,16 @@ def update_debt(session: Session, debt_id: str, **kwargs) -> bool:
                 setattr(debt, k, v[:10] if v else "")
             else:
                 setattr(debt, k, v)
+    session.commit()
+    return True
+
+
+def delete_debt(session: Session, debt_id: str) -> bool:
+    debt = get_debt(session, debt_id)
+    if not debt:
+        return False
+    session.query(DebtPayment).filter(DebtPayment.debt_id == debt_id).delete(synchronize_session=False)
+    session.delete(debt)
     session.commit()
     return True
 

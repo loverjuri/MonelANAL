@@ -9,22 +9,10 @@
     <button type="submit" class="btn">Искать</button>
   </form>
 </div>
-<div class="card more-list">
-  <p><a href="{{ url_for('web.income') }}">Добавить доход</a></p>
-  <p><a href="{{ url_for('web.orders') }}">Заказы (вторая работа)</a></p>
-  <p><a href="{{ url_for('web.debts') }}">Долги</a></p>
-  <p><a href="{{ url_for('web.subscriptions') }}">Подписки</a></p>
-  <p><a href="{{ url_for('web.analytics') }}">Аналитика</a></p>
-  <p><a href="{{ url_for('web.history') }}">История</a></p>
-  <p><a href="{{ url_for('web.templates_list') }}">Шаблоны</a></p>
-  <p><a href="{{ url_for('web.worklog') }}">Рабочие дни</a></p>
-  <p><a href="{{ url_for('web.tags') }}">Теги</a></p>
-  <p><a href="{{ url_for('web.calculations') }}">Расчёты ЗП</a></p>
-  <p><a href="{{ url_for('web.mass_operations') }}">Массовые операции</a></p>
-  <p><a href="{{ url_for('web.achievements') }}">Достижения</a></p>
-  <p><a href="{{ url_for('web.import_data') }}">Импорт Excel</a></p>
-  <p><a href="{{ url_for('web.export_data') }}">Экспорт CSV</a></p>
-  <p><a href="{{ url_for('web.settings') }}">Настройки</a></p>
-</div>
+<div class="card"><h2>Операции</h2><p><a href="{{ url_for('web.income') }}">Добавить доход</a></p><p><a href="{{ url_for('web.expense') }}">Добавить расход</a></p><p><a href="{{ url_for('web.history') }}">История операций</a></p><p><a href="{{ url_for('web.accounts') }}">Счета и переводы</a></p><p><a href="{{ url_for('web.import_data') }}">Импорт Excel</a></p><p><a href="{{ url_for('web.export_data') }}">Экспорт CSV</a></p></div>
+<div class="card"><h2>Доходы и работа</h2><p><a href="{{ url_for('web.ip_wallet') }}">ИП и копилка</a></p><p><a href="{{ url_for('web.income_sources') }}">Источники дохода</a></p><p><a href="{{ url_for('web.orders') }}">Заказы</a></p><p><a href="{{ url_for('web.worklog') }}">Рабочие дни</a></p><p><a href="{{ url_for('web.calculations') }}">Расчёты зарплаты</a></p><p><a href="{{ url_for('web.tags') }}">Теги доходов</a></p></div>
+<div class="card"><h2>Планирование</h2><p><a href="{{ url_for('web.budget') }}">Бюджет</a></p><p><a href="{{ url_for('web.goals') }}">Цели</a></p><p><a href="{{ url_for('web.debts') }}">Долги</a></p><p><a href="{{ url_for('web.subscriptions', type='income') }}">Регулярные доходы</a></p><p><a href="{{ url_for('web.subscriptions', type='expense') }}">Регулярные расходы</a></p></div>
+<div class="card"><h2>Аналитика и сервис</h2><p><a href="{{ url_for('web.analytics') }}">Аналитика</a></p><p><a href="{{ url_for('web.templates_list') }}">Шаблоны</a></p><p><a href="{{ url_for('web.mass_operations') }}">Массовые операции</a></p><p><a href="{{ url_for('web.achievements') }}">Достижения</a></p><p><a href="{{ url_for('web.settings') }}">Настройки</a></p></div>
 <p><a href="{{ url_for('web.logout') }}" style="color: var(--text-muted);">Выйти</a></p>
 {% endblock %}
+

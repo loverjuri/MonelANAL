@@ -28,8 +28,8 @@ def create_backup_json(session) -> str:
 
 def delete_all_data(session):
     """Delete all user data from all tables."""
-    from db.models import WorkLog, Order, Finance, BudgetPlan, Goal, Subscription, Calculation, Debt, DebtPayment, State, Log, Achievement, ExpenseTemplate, IncomeSource, IPSavings, AuditLog
-    for model in [Finance, WorkLog, Order, BudgetPlan, Goal, Subscription, Calculation, Debt, DebtPayment, State, Log, Achievement, ExpenseTemplate, IncomeSource, IPSavings, AuditLog]:
+    from db.models import WorkLog, Order, Finance, BudgetPlan, Goal, Subscription, Calculation, Debt, DebtPayment, State, Log, Achievement, ExpenseTemplate, IncomeSource, IPSavings, IPWalletOperation, Account, AccountTransfer, AuditLog
+    for model in [Finance, WorkLog, Order, BudgetPlan, Goal, Subscription, Calculation, Debt, DebtPayment, State, Log, Achievement, ExpenseTemplate, IncomeSource, IPSavings, IPWalletOperation, AccountTransfer, Account, AuditLog]:
         try:
             session.query(model).delete()
         except Exception:

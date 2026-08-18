@@ -60,6 +60,10 @@
   <p><strong>Баланс: {{ status.balance }} руб.</strong></p>
   <p>Следующая выплата: {{ status.next_pay }}</p>
   <p>Долги: я должен {{ status.debt_owe }}, мне должны {{ status.debt_lent }}</p>
+  <p><a href="{{ url_for('web.ip_wallet') }}">Копилка ИП: <strong>{{ '%.2f'|format(status.ip_savings or 0) }} ₽</strong></a></p>
+  <p><a href="{{ url_for('web.accounts') }}">Счета</a></p>
+  <p>Всего на счетах: <strong>{{ '%.2f'|format(status.accounts_total or 0) }} ₽</strong></p>
+  <p>Просроченные доходы: <strong>{{ status.overdue_income or 0 }}</strong></p>
 </div>
 
 {% if advice or digest %}

@@ -162,7 +162,7 @@ def get_budget_balance(session) -> float:
     from db.models import Finance
     income = session.query(func.coalesce(func.sum(Finance.amount), 0)).filter(
         Finance.is_deleted == False,
-        Finance.type.in_((TYPE_INCOME_SALARY, TYPE_INCOME_SECOND)),
+        Finance.type.in_((TYPE_INCOME_SALARY, TYPE_INCOME_SECOND, "IncomeBonus", "IncomeIPReserve")),
     ).scalar() or 0
     expense = session.query(func.coalesce(func.sum(Finance.amount), 0)).filter(
         Finance.is_deleted == False, Finance.type == TYPE_EXPENSE,
