@@ -35,6 +35,11 @@ else
   PIP=(python3 -m pip)
 fi
 
+# Create missing tables/config on a fresh PythonAnywhere checkout before
+# applying ALTER TABLE migrations. This is idempotent.
+"$PYTHON" run_init.py
+"$PYTHON" migrate.py
+
 if [[ -x "$VENV_DIR/bin/pip" ]]; then
   PIP=("$VENV_DIR/bin/pip")
 fi

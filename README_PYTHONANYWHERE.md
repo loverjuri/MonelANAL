@@ -172,6 +172,10 @@ pip install -r requirements.txt
 python migrate.py
 ```
 
+Для свежего клона сначала обязательно выполните `python run_init.py`, затем
+`python migrate.py`. `migrate.py` меняет существующие таблицы, а `run_init.py`
+создаёт базовые таблицы и конфигурацию.
+
 Без этого возможны ошибки `no such table: logs`, `no such column: finance.exclude_from_budget` и т.п.
 
 ---

@@ -1,6 +1,7 @@
 """Excel import: Alfa-Bank format parser."""
 from datetime import datetime
 from pathlib import Path
+from typing import BinaryIO
 
 
 def _parse_amount(val) -> float:
@@ -38,7 +39,7 @@ def _parse_date(val) -> str | None:
         return None
 
 
-def parse_alfa_bank(xlsx_path: str | Path) -> list[dict]:
+def parse_alfa_bank(xlsx_path: str | Path | BinaryIO) -> list[dict]:
     """
     Parse Alfa-Bank bank statement Excel.
     Returns list of {date, amount, category_bank, description}.
@@ -49,11 +50,13 @@ def parse_alfa_bank(xlsx_path: str | Path) -> list[dict]:
     except ImportError:
         return []
 
-    path = Path(xlsx_path)
-    if not path.exists():
-        return []
-
-    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    if hasattr(xlsx_path, "read"):
+        wb = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
+    else:
+        path = Path(xlsx_path)
+        if not path.exists():
+            return []
+        wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
     ws = wb.active
     if not ws:
         wb.close()
