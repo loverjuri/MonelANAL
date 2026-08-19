@@ -16,7 +16,7 @@ app = Flask(__name__)
 
 def _internal_error_response(log_message: str):
     """Log details server-side without exposing implementation data to callers."""
-    app.logger.exception(log_message)
+    app.logger.error(log_message, exc_info=True)
     return jsonify({"ok": False, "error": "Internal server error"}), 500
 app.config["SECRET_KEY"] = SECRET_KEY
 app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024

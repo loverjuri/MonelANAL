@@ -267,6 +267,9 @@ def add_finance_entry(
     account_id: str = "",
     commit: bool = True,
 ) -> str:
+    amount = float(amount)
+    if not math.isfinite(amount) or amount < 0:
+        raise ValueError("Finance amount must be finite and non-negative")
     rid = generate_id()
     session.add(Finance(
         id=rid,
@@ -347,6 +350,8 @@ def get_last_main_payday(session: Session) -> Optional[str]:
 
 def add_ip_revenue(session: Session, date_str: str, amount: float, tag: str = "", comment: str = "") -> float:
     amount = float(amount)
+    if not math.isfinite(amount) or amount <= 0:
+        raise ValueError("IP revenue amount must be finite and positive")
     reserve = round(amount * 0.01, 2)
     session.add(IPSavings(id=generate_id(), date=date_str[:10], revenue_amount=amount,
                           reserve_amount=reserve, tag=tag or "", comment=comment or ""))
@@ -454,7 +459,11 @@ def delete_account(session: Session, account_id: str) -> bool:
 
 def add_account_transfer(session: Session, date_str: str, from_account_id: str,
                          to_account_id: str, amount: float, comment: str = "") -> bool:
-    if from_account_id == to_account_id or amount <= 0:
+    try:
+        amount = float(amount)
+    except (TypeError, ValueError):
+        return False
+    if not math.isfinite(amount) or from_account_id == to_account_id or amount <= 0:
         return False
     if not get_account(session, from_account_id) or not get_account(session, to_account_id):
         return False
@@ -469,8 +478,11 @@ def get_account_transfers(session: Session, limit: int = 100) -> list:
 
 
 def withdraw_ip_savings(session: Session, date_str: str, amount: float, comment: str = "") -> bool:
-    amount = float(amount)
-    if amount <= 0 or amount > get_ip_savings_total(session) + 0.01:
+    try:
+        amount = float(amount)
+    except (TypeError, ValueError):
+        return False
+    if not math.isfinite(amount) or amount <= 0 or amount > get_ip_savings_total(session) + 0.01:
         return False
     add_finance_entry(session, date_str, "IncomeIPReserve", amount, "Копилка ИП",
                       comment or "Перевод из копилки ИП в общий баланс", source="ИП", commit=False)

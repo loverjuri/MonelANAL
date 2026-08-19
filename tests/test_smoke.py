@@ -27,6 +27,15 @@ class AppSmokeTests(unittest.TestCase):
         response = self.client.get("/cron/backup")
         self.assertEqual(response.status_code, 401)
 
+    def test_bad_page_is_not_server_error_in_dev_mode(self):
+        previous = app.config.get("DEV_MODE")
+        app.config["DEV_MODE"] = True
+        try:
+            response = self.client.get("/web/history?page=not-a-number")
+            self.assertNotEqual(response.status_code, 500)
+        finally:
+            app.config["DEV_MODE"] = previous
+
 
 if __name__ == "__main__":
     unittest.main()

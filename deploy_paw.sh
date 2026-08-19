@@ -35,18 +35,14 @@ else
   PIP=(python3 -m pip)
 fi
 
+if git diff --name-only "$OLD_COMMIT" "$NEW_COMMIT" | grep -qE '(^|/)requirements\.txt$'; then
+  "${PIP[@]}" install -r requirements.txt
+fi
+
 # Create missing tables/config on a fresh PythonAnywhere checkout before
 # applying ALTER TABLE migrations. This is idempotent.
 "$PYTHON" run_init.py
 "$PYTHON" migrate.py
-
-if [[ -x "$VENV_DIR/bin/pip" ]]; then
-  PIP=("$VENV_DIR/bin/pip")
-fi
-
-if git diff --name-only "$OLD_COMMIT" "$NEW_COMMIT" | grep -qE '(^|/)requirements\.txt$'; then
-  "${PIP[@]}" install -r requirements.txt
-fi
 
 if git diff --name-only "$OLD_COMMIT" "$NEW_COMMIT" | grep -Eq '(^|/)(migrate.py|db/|services/|bot/|web/|app.py)'; then
   "$PYTHON" migrate.py

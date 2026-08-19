@@ -1,5 +1,5 @@
 """Web views: dashboard, expense, budget, goals, debts, etc."""
-from flask import render_template, redirect, url_for, request, flash, jsonify, send_file, send_from_directory
+from flask import render_template, redirect, url_for, request, flash, jsonify, send_file, send_from_directory, current_app
 from flask_login import login_required, current_user
 import os
 from . import web_bp
@@ -122,12 +122,22 @@ from .cache_helpers import (
 )
 import io
 import math
+import csv
 from datetime import datetime, timedelta
 
 # Categories (from bot/keyboards)
 EXPENSE_CATEGORIES = [
     "Еда", "Транспорт", "ЗП Выплата", "Жильё", "Здоровье", "Развлечения", "Прочее",
 ]
+
+
+def _safe_positive_int(value, default: int = 1, maximum: int = 10000) -> int:
+    """Parse bounded pagination values without turning bad input into a 500."""
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return min(max(1, parsed), maximum)
 
 def _get_status_data(session):
     """Cached status data for dashboard."""
@@ -774,7 +784,7 @@ def history():
                 return redirect(url_for("web.history"))
             return redirect(url_for("web.history"))
 
-        page = max(1, int(request.args.get("page", 1)))
+        page = _safe_positive_int(request.args.get("page", 1))
         per_page = 30
         offset = (page - 1) * per_page
         search_q = (request.args.get("q") or "").strip()
@@ -1154,7 +1164,7 @@ def import_data():
     if request.method == "GET":
         return render_template("import.html")
     f = request.files.get("file")
-    if not f or not f.filename.endswith((".xlsx", ".xls")):
+    if not f or not (f.filename or "").lower().endswith((".xlsx", ".xls")):
         flash("Загрузите файл Excel (.xlsx)", "error")
         return redirect(url_for("web.import_data"))
     content = f.read()
@@ -1162,7 +1172,12 @@ def import_data():
         flash("Файл слишком большой (макс 1 MB)", "error")
         return redirect(url_for("web.import_data"))
     from db.repositories import has_finance_duplicate
-    rows = parse_alfa_bank(io.BytesIO(content))
+    try:
+        rows = parse_alfa_bank(io.BytesIO(content))
+    except (OSError, ValueError, RuntimeError) as exc:
+        current_app.logger.warning("Excel import rejected: %s", exc)
+        flash("Не удалось прочитать Excel-файл", "error")
+        return redirect(url_for("web.import_data"))
     session = get_session()
     added = 0
     try:
@@ -1185,6 +1200,11 @@ def import_data():
             invalidate_status()
             invalidate_budget()
         flash(f"Импортировано {added} записей", "success")
+    except Exception:
+        session.rollback()
+        current_app.logger.exception("Excel import failed")
+        flash("Импорт не выполнен: данные не изменены", "error")
+        return redirect(url_for("web.import_data"))
     finally:
         session.close()
     return redirect(url_for("web.dashboard"))
@@ -1198,11 +1218,21 @@ def export_data():
         from datetime import datetime
         start = (request.args.get("start") or (datetime.now().replace(day=1) - timedelta(days=365)).strftime("%Y-%m-%d"))[:10]
         end = (request.args.get("end") or get_today_msk())[:10]
+        try:
+            start_date = datetime.strptime(start, "%Y-%m-%d")
+            end_date = datetime.strptime(end, "%Y-%m-%d")
+        except ValueError:
+            flash("Некорректный период экспорта", "error")
+            return redirect(url_for("web.history"))
+        if start_date > end_date or (end_date - start_date).days > 3660:
+            flash("Период экспорта должен быть корректным и не превышать 10 лет", "error")
+            return redirect(url_for("web.history"))
         rows = get_finance_for_period(session, start, end)
-        buf = io.StringIO()
-        buf.write("date\ttype\tamount\tcategory\tcomment\n")
+        buf = io.StringIO(newline="")
+        writer = csv.writer(buf, delimiter="\t", lineterminator="\n")
+        writer.writerow(("date", "type", "amount", "category", "comment"))
         for r in rows:
-            buf.write(f"{r.date}\t{r.type}\t{r.amount}\t{r.category or ''}\t{r.comment or ''}\n")
+            writer.writerow((r.date, r.type, r.amount, r.category or "", r.comment or ""))
         buf.seek(0)
         return send_file(
             io.BytesIO(buf.getvalue().encode("utf-8-sig")),
