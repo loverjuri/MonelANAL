@@ -1,10 +1,12 @@
 """Small dependency-free smoke tests for the Flask application."""
 import os
 import unittest
+from unittest.mock import Mock
 
 os.environ.setdefault("DEV_MODE", "0")
 
 from app import app
+from db.repositories import add_finance_entry, add_account_transfer
 
 
 class AppSmokeTests(unittest.TestCase):
@@ -35,6 +37,13 @@ class AppSmokeTests(unittest.TestCase):
             self.assertNotEqual(response.status_code, 500)
         finally:
             app.config["DEV_MODE"] = previous
+
+    def test_finance_rejects_non_finite_amount(self):
+        with self.assertRaises(ValueError):
+            add_finance_entry(Mock(), "2026-01-01", "Expense", float("nan"))
+
+    def test_transfer_rejects_non_finite_amount(self):
+        self.assertFalse(add_account_transfer(Mock(), "2026-01-01", "a", "b", float("inf")))
 
 
 if __name__ == "__main__":

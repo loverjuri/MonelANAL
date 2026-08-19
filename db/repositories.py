@@ -4,7 +4,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from typing import Optional
 
-from sqlalchemy import text, func
+from sqlalchemy import text, func, case
 from sqlalchemy.orm import Session
 
 from db.models import (
@@ -429,15 +429,32 @@ def get_account(session: Session, account_id: str):
 
 
 def get_account_balances(session: Session) -> dict:
+    """Calculate balances with SQL aggregates instead of loading every entry."""
     accounts = get_accounts(session)
     result = {a.id: float(a.opening_balance or 0) for a in accounts}
-    for row in session.query(Finance).filter(Finance.is_deleted == False, Finance.account_id != "").all():
-        if row.account_id in result:
-            sign = -1 if row.type == "Expense" else 1
-            result[row.account_id] += sign * float(row.amount or 0)
-    for row in session.query(AccountTransfer).all():
-        if row.from_account_id in result: result[row.from_account_id] -= row.amount
-        if row.to_account_id in result: result[row.to_account_id] += row.amount
+    finance_totals = session.query(
+        Finance.account_id,
+        func.coalesce(func.sum(case((Finance.type == "Expense", -Finance.amount), else_=Finance.amount)), 0),
+    ).filter(
+        Finance.is_deleted == False,
+        Finance.account_id != "",
+    ).group_by(Finance.account_id).all()
+    for account_id, total in finance_totals:
+        if account_id in result:
+            result[account_id] += float(total or 0)
+
+    outgoing = session.query(
+        AccountTransfer.from_account_id, func.coalesce(func.sum(AccountTransfer.amount), 0)
+    ).group_by(AccountTransfer.from_account_id).all()
+    incoming = session.query(
+        AccountTransfer.to_account_id, func.coalesce(func.sum(AccountTransfer.amount), 0)
+    ).group_by(AccountTransfer.to_account_id).all()
+    for account_id, total in outgoing:
+        if account_id in result:
+            result[account_id] -= float(total or 0)
+    for account_id, total in incoming:
+        if account_id in result:
+            result[account_id] += float(total or 0)
     return result
 
 
