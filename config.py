@@ -20,7 +20,10 @@ DATA_DIR.mkdir(exist_ok=True)
 
 # Telegram (env preferred; Config table used as fallback when handlers run)
 BOT_TOKEN: str = os.environ.get("BOT_TOKEN", "").strip()
-BOT_USERNAME: str = os.environ.get("BOT_USERNAME", "").strip()  # For Login Widget, e.g. MyBot
+# Telegram Login Widget expects the username without the leading ``@``.
+# Accepting both forms here prevents a harmless but confusing configuration
+# error when the value is copied from Telegram.
+BOT_USERNAME: str = os.environ.get("BOT_USERNAME", "").strip().lstrip("@")
 CHAT_ID: str = os.environ.get("CHAT_ID", "").strip()
 
 # Web App URL for Mini App (автовход). Example: https://monocore.pythonanywhere.com/web/login
