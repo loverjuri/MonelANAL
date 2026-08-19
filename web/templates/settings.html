@@ -94,6 +94,7 @@
     <a href="{{ url_for('web.settings_backup') }}" class="btn btn-secondary">Скачать JSON бэкап</a>
     <form method="post" style="display:inline;">
       <input type="hidden" name="action" value="delete_all">
+      <input type="hidden" name="confirm_delete_all" value="DELETE_ALL">
       <button type="submit" class="btn" style="background: var(--danger);" onclick="return confirm('Удалить ВСЕ данные? Это действие необратимо!')">Удалить все данные</button>
     </form>
   </div>

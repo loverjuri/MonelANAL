@@ -1097,6 +1097,9 @@ def settings():
                     flash(f"Категория «{cat_name}» добавлена", "success")
                 return redirect(url_for("web.settings"))
             if action == "delete_all":
+                if request.form.get("confirm_delete_all") != "DELETE_ALL":
+                    flash("Для подтверждения введите DELETE_ALL", "error")
+                    return redirect(url_for("web.settings"))
                 from services.backup import delete_all_data
                 delete_all_data(session)
                 flash("Все данные удалены", "success")

@@ -1,4 +1,5 @@
 """Database repositories for CRUD operations."""
+import math
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from typing import Optional
@@ -877,7 +878,13 @@ def get_debt(session: Session, debt_id: str):
 
 def add_debt_payment(session: Session, debt_id: str, amount: float, comment: str = "", date: str = None) -> str | None:
     debt = get_debt(session, debt_id)
-    if not debt:
+    try:
+        amount = float(amount)
+    except (TypeError, ValueError):
+        return None
+    if not debt or not math.isfinite(amount) or amount <= 0:
+        return None
+    if amount > float(debt.remaining_amount or 0) + 0.005:
         return None
     pid = generate_id()
     date_str = (date[:10] if date else None) or get_today_msk()
@@ -901,13 +908,19 @@ def update_debt_payment(session: Session, payment_id: str, amount: float = None,
     if not p:
         return False
     if amount is not None:
+        try:
+            amount = float(amount)
+        except (TypeError, ValueError):
+            return False
+        if not math.isfinite(amount) or amount <= 0:
+            return False
         delta = amount - p.amount
-        p.amount = amount
         debt = get_debt(session, p.debt_id)
-        if debt:
-            debt.remaining_amount = max(0, (debt.remaining_amount or 0) + delta)
-            if debt.remaining_amount > 0 and not debt.is_active:
-                debt.is_active = True
+        if not debt or float(debt.remaining_amount or 0) + p.amount - amount < -0.005:
+            return False
+        p.amount = amount
+        debt.remaining_amount = max(0, (debt.remaining_amount or 0) + delta)
+        debt.is_active = debt.remaining_amount > 0
     if date is not None:
         p.date = date[:10]
     session.commit()

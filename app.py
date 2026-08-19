@@ -12,6 +12,12 @@ from bot.process_update import process_update
 from config import SECRET_KEY, DEV_MODE
 
 app = Flask(__name__)
+
+
+def _internal_error_response(log_message: str):
+    """Log details server-side without exposing implementation data to callers."""
+    app.logger.exception(log_message)
+    return jsonify({"ok": False, "error": "Internal server error"}), 500
 app.config["SECRET_KEY"] = SECRET_KEY
 app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024
 app.config["SESSION_COOKIE_SECURE"] = False if DEV_MODE else os.environ.get(
@@ -101,11 +107,11 @@ def deploy():
 
 
 def _check_cron_token():
-    """Verify CRON_SECRET from query param or header."""
+    """Verify CRON_SECRET from a header (query fallback for old cron jobs)."""
     from config import CRON_SECRET
     if not CRON_SECRET:
         return app.debug
-    token = request.args.get("token") or request.headers.get("X-Cron-Token")
+    token = request.headers.get("X-Cron-Token") or request.args.get("token")
     return token == CRON_SECRET
 
 
@@ -123,7 +129,7 @@ def cron_main_work():
         return "OK", 200
     except Exception as e:
         app.logger.exception("cron main-work: %s", e)
-        return jsonify({"error": str(e)}), 500
+        return _internal_error_response("cron task failed")
 
 
 @app.route("/cron/second-job", methods=["GET"])
@@ -140,7 +146,7 @@ def cron_second_job():
         return "OK", 200
     except Exception as e:
         app.logger.exception("cron second-job: %s", e)
-        return jsonify({"error": str(e)}), 500
+        return _internal_error_response("cron task failed")
 
 
 @app.route("/cron/payday", methods=["GET"])
@@ -163,7 +169,7 @@ def cron_payday():
         return "OK", 200
     except Exception as e:
         app.logger.exception("cron payday: %s", e)
-        return jsonify({"error": str(e)}), 500
+        return _internal_error_response("cron task failed")
 
 
 @app.route("/cron/reminder-main", methods=["GET"])
@@ -180,7 +186,7 @@ def cron_reminder_main():
         return "OK", 200
     except Exception as e:
         app.logger.exception("cron reminder-main: %s", e)
-        return jsonify({"error": str(e)}), 500
+        return _internal_error_response("cron task failed")
 
 
 @app.route("/cron/reminder-second", methods=["GET"])
@@ -197,7 +203,7 @@ def cron_reminder_second():
         return "OK", 200
     except Exception as e:
         app.logger.exception("cron reminder-second: %s", e)
-        return jsonify({"error": str(e)}), 500
+        return _internal_error_response("cron task failed")
 
 
 @app.route("/cron/subscriptions", methods=["GET"])
@@ -214,7 +220,7 @@ def cron_subscriptions():
         return "OK", 200
     except Exception as e:
         app.logger.exception("cron subscriptions: %s", e)
-        return jsonify({"error": str(e)}), 500
+        return _internal_error_response("cron task failed")
 
 
 @app.route("/cron/overspend-digest", methods=["GET"])
@@ -231,7 +237,7 @@ def cron_overspend_digest():
         return "OK", 200
     except Exception as e:
         app.logger.exception("cron overspend-digest: %s", e)
-        return jsonify({"error": str(e)}), 500
+        return _internal_error_response("cron task failed")
 
 
 @app.route("/cron/debt-reminders", methods=["GET"])
@@ -248,7 +254,7 @@ def cron_debt_reminders():
         return "OK", 200
     except Exception as e:
         app.logger.exception("cron debt-reminders: %s", e)
-        return jsonify({"error": str(e)}), 500
+        return _internal_error_response("cron task failed")
 
 
 @app.route("/cron/goal-deadline", methods=["GET"])
@@ -265,7 +271,7 @@ def cron_goal_deadline():
         return "OK", 200
     except Exception as e:
         app.logger.exception("cron goal-deadline: %s", e)
-        return jsonify({"error": str(e)}), 500
+        return _internal_error_response("cron task failed")
 
 
 @app.route("/cron/backup", methods=["GET"])
@@ -282,7 +288,7 @@ def cron_backup():
         return "OK", 200
     except Exception as e:
         app.logger.exception("cron backup: %s", e)
-        return jsonify({"error": str(e)}), 500
+        return _internal_error_response("cron task failed")
 
 
 @app.route("/cron/auto-subscriptions", methods=["GET"])
@@ -299,7 +305,7 @@ def cron_auto_subscriptions():
         return "OK", 200
     except Exception as e:
         app.logger.exception("cron auto-subscriptions: %s", e)
-        return jsonify({"error": str(e)}), 500
+        return _internal_error_response("cron task failed")
 
 
 @app.route("/cron/cleanup-logs", methods=["GET"])
@@ -318,7 +324,7 @@ def cron_cleanup_logs():
         return "OK", 200
     except Exception as e:
         app.logger.exception("cron cleanup-logs: %s", e)
-        return jsonify({"error": str(e)}), 500
+        return _internal_error_response("cron task failed")
 
 
 @app.route("/cron/prod-calendar", methods=["GET"])
@@ -332,7 +338,7 @@ def cron_prod_calendar():
         return "OK", 200
     except Exception as e:
         app.logger.exception("cron prod-calendar: %s", e)
-        return jsonify({"error": str(e)}), 500
+        return _internal_error_response("cron task failed")
 
 
 # WSGI entry point for PythonAnywhere
