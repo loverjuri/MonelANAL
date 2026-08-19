@@ -86,7 +86,7 @@ venv_site = '/home/USERNAME/monelanal/venv/lib/python3.10/site-packages'
 if venv_site not in sys.path:
     sys.path.insert(0, venv_site)
 
-from app import application
+from app import app as application
 ```
 
 Подставьте **USERNAME** на свой логин.

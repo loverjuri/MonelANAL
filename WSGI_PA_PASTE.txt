@@ -1,14 +1,12 @@
-# Скопируйте ВСЁ НИЖЕ (от import sys до application) в PA → Web → WSGI configuration file
+# Скопируйте ВСЁ НИЖЕ в PA → Web → WSGI configuration file.
+# Переменные окружения задайте в Environment variables PythonAnywhere.
 # ---
 
 import sys
-path = '/home/monocore/MonelANAL'
-if path not in sys.path:
-    sys.path.insert(0, path)
+from pathlib import Path
 
-# Если pyotp/flask не находятся — проверьте: ls venv/lib/ — там python3.10 или python3.13?
-venv_site = '/home/monocore/MonelANAL/venv/lib/python3.13/site-packages'
-if venv_site not in sys.path:
-    sys.path.insert(0, venv_site)
+project_dir = Path('/home/monocore/MonelANAL')
+if str(project_dir) not in sys.path:
+    sys.path.insert(0, str(project_dir))
 
-from app import application
+from app import app as application

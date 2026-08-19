@@ -38,11 +38,11 @@ path = '/home/monocore/MonelANAL'
 if path not in sys.path:
     sys.path.insert(0, path)
 
-venv_site = '/home/monocore/MonelANAL/venv/lib/python3.13/site-packages'
+venv_site = '/home/monocore/MonelANAL/venv/lib/python3.10/site-packages'
 if venv_site not in sys.path:
     sys.path.insert(0, venv_site)
 
-from app import application
+from app import app as application
 ```
 
 Или скопируйте из файла `WSGI_PA_PASTE.txt` (без комментариев в начале).

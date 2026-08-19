@@ -34,6 +34,11 @@ except ImportError:
 from web import init_web
 init_web(app)
 
+# PythonAnywhere's default WSGI examples historically import ``application``.
+# Keep this compatibility alias so an old WSGI file cannot produce an import
+# error after the Flask object was named ``app``.
+application = app
+
 
 @app.before_request
 def make_session_permanent():
